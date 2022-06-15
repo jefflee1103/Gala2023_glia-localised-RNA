@@ -25,13 +25,14 @@ df <- df_raw %>%
                 "mmus_gene_name" = mouse_symbol,
                 "dmel_gene_id" = fly_species_gene_id,
                 "dmel_gene_name" = fly_symbol,
-                diopt_score, weighted_score, rank)
+                diopt_score)
 
 df %>%
-  ggplot(aes(x = rank, y = weighted_score)) + 
-  geom_quasirandom()
-  
+  ggplot(aes(x = as.factor(diopt_score))) + 
+  geom_bar()
 
+qsave(df, "./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
+  
 ```
 
 
