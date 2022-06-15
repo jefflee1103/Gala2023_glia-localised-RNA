@@ -1,25 +1,158 @@
 ---
 Dtitle: "Glia localised RNA"
 format: html
+editor_options: 
+  chunk_output_type: console
 ---
 
-## Quarto
+```{r Environment}
+library(tidyverse)
+library(qs)
+library(biomaRt)
+library(janitor)
+library(kableExtra)
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
-1 + 1
 ```
 
-You can add options to executable code like this 
 
 ```{r}
-#| echo: false
-2 * 2
+df_raw <- map_dfr(list.files("./data/DIOPT/mouse96-to-fly", pattern = ".csv", full.names = TRUE), 
+        ~ read_csv(.x, col_types = "ncccccccccnnccccccc")) %>% clean_names()
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+# Glia localised RNA
+
+## Overview of the glial localised RNA data 
+
+Total 12 datasets (8 transcriptome + 4 translatome datasets). 
+
+```{r}
+summary_table <- readRDS("./data/summary_table.RDS") %>% clean_names()
+
+overview_df <- tibble(
+  category = c("Transcript present (n>=8)", "Translation present (n>=3)", "Transcript enriched (n>=3)", "Translation enriched (n>=3)"),
+  gene_count = c(
+    summary_table %>%
+      filter(rna_in_protrusion >= 8) %>% nrow(),
+    summary_table %>%
+      filter(translation_in_protrusion >= 3) %>% nrow(),
+    summary_table %>%
+      filter(enriched_in_protrusion >= 3) %>% nrow(),
+    summary_table %>%
+      filter(enhanced_translation_in_protrusion >= 3) %>% nrow()
+  )
+)
+
+
+
+## Localised to protrusion 
+summary_table %>%
+  filter(rna_in_protrusion >= 8) %>% pull(gene_id) -> a
+
+## Transalated in protrusion
+summary_table %>%
+  filter(translation_in_protrusion >= 3) %>% pull(gene_id) -> b
+
+## Transcript enriched in protrusion
+summary_table %>%
+  filter(enriched_in_protrusion >= 3) %>% pull(gene_id) -> c
+
+## Translation enriched in protrusion 
+summary_table %>%
+  filter(enhanced_translation_in_protrusion >= 3) %>% pull(gene_id) -> d
+
+intersect(c, d) %>% length()
+intersect(a, d) %>% length()
+
+```
+
+
+```{r}
+## GO filter function 
+filter_go_terms <- function(df, search_term){
+  df %>% 
+    dplyr::filter(
+      str_detect(go_biological_process, search_term) |
+        str_detect(go_molecular_function, search_term) |
+        str_detect(go_cellular_component, search_term)
+      )
+}
+
+##
+summary_table %>% 
+  filter_go_terms("RNA stability")
+
+
+
+
+```
+
+
+## Get D.mel genes for mouse 
+
+```{r}
+
+
+mouse_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", 
+                        host = "https://apr2019.archive.ensembl.org")
+
+mouse_biomart_attributes <- listAttributes(mouse_mart96)
+
+attributes_wanted <- c("ensembl_gene_id", "dmelanogaster_homolog_ensembl_gene", "dmelanogaster_homolog_associated_gene_name", "dmelanogaster_homolog_orthology_confidence")
+
+mousetofly_ens96 <- getBM(attributes = attributes_wanted,
+                          mart = mouse_mart96,
+                          filters = "ensembl_gene_id",
+                          values = summary_table$gene_id)
+
+mousetofly_ens96 %>% 
+  group_by(dmelanogaster_homolog_orthology_confidence) %>%
+  summarise(n = n())
+
+mousetofly_ens96 %>%
+  filter(dmelanogaster_homolog_orthology_confidence >= 0) %>%
+  pull(dmelanogaster_homolog_ensembl_gene) %>% unique() %>% length()
+
+
+
+
+
+
+
+fly_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "dmelanogaster_gene_ensembl", 
+                        host = "https://apr2019.archive.ensembl.org")
+
+fly_biomart_attributes <- listAttributes(fly_mart96)
+
+attributes_wanted <- c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene", "mmusculus_homolog_associated_gene_name", "mmusculus_homolog_orthology_confidence")
+
+flytomouse_ens96 <- getBM(attributes = attributes_wanted,
+                          mart = fly_mart96,
+                          filters = "ensembl_gene_id",
+                          values = summary_table$gene_id)
+
+flytomouse_ens96 %>% 
+  group_by(dmelanogaster_homolog_orthology_confidence) %>%
+  summarise(n = n())
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
