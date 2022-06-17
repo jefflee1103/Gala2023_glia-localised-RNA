@@ -15,27 +15,6 @@ library(ggbeeswarm)
 
 ```
 
-
-```{r}
-df_raw <- map_dfr(list.files("./data/DIOPT/mouse96-to-fly", pattern = ".csv", full.names = TRUE), 
-        ~ read_csv(.x, col_types = "ncccccccccnnccccccc")) %>% clean_names()
-
-df <- df_raw %>%
-  dplyr::select("mmus_gene_id" = search_term, 
-                "mmus_gene_name" = mouse_symbol,
-                "dmel_gene_id" = fly_species_gene_id,
-                "dmel_gene_name" = fly_symbol,
-                diopt_score)
-
-df %>%
-  ggplot(aes(x = as.factor(diopt_score))) + 
-  geom_bar()
-
-qsave(df, "./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
-  
-```
-
-
 # Glia localised RNA
 
 ## Overview of the glial localised RNA data 
@@ -44,20 +23,181 @@ Total 12 datasets (8 transcriptome + 4 translatome datasets).
 
 ```{r}
 summary_table <- readRDS("./data/summary_table.RDS") %>% clean_names()
+diopt_mousetofly <- qread("./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
+
+## Get mouse to fly conversion table 
+too_many_matches <- diopt_mousetofly %>%
+  filter(diopt_score >= 8) %>%
+  group_by(dmel_gene_id) %>%
+  slice_max(diopt_score, n = 3) %>% 
+  summarise(count = n()) %>% 
+  ungroup() %>%
+  filter(count >= 2) %>% pull(dmel_gene_id) 
+
+diopt_conversion_table <- diopt_mousetofly %>%
+  filter(diopt_score >= 8) %>%
+  group_by(dmel_gene_id) %>%
+  slice_max(diopt_score, n = 3) %>%
+  ungroup() %>%
+  filter(if_else(
+    dmel_gene_id %in% too_many_matches, 
+    diopt_score >= 10,
+    diopt_score >= 8))
+
+diopt_conversion_table %>%
+  ggplot(aes(x = as.factor(diopt_score))) +
+  geom_bar()
+
+## Combine to the summary table 
+df <- summary_table %>%
+  left_join(
+    diopt_conversion_table %>% 
+      dplyr::select(mmus_gene_id, dmel_gene_id, dmel_gene_name),
+    by = c("gene_id" = "mmus_gene_id")
+  )
+
+## Dmel GO annotations
+fly_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "dmelanogaster_gene_ensembl", 
+                        host = "https://apr2019.archive.ensembl.org")
+
+fly_biomart_attributes <- listAttributes(fly_mart96)
+
+attributes_wanted <- c("ensembl_gene_id", "go_id", "name_1006", "namespace_1003")
+
+fly_go_ens96 <- getBM(attributes = attributes_wanted,
+                          mart = fly_mart96,
+                          filters = "ensembl_gene_id",
+                          values = unique(diopt_conversion_table$dmel_gene_id)) %>%
+  dplyr::select("dmel_gene_id" = ensembl_gene_id, go_id, "term" = name_1006, namespace_1003) %>%
+  mutate(go_id = str_remove(go_id, ":")) %>%
+  unite(col = "terms", c(go_id, term), sep = " ") %>%
+  mutate(namespace_1003 = paste0("go_", namespace_1003)) %>%
+  group_by(dmel_gene_id, namespace_1003) %>%
+  mutate(terms = paste0(terms, collapse = ", ")) %>%
+  ungroup() %>% distinct() %>%
+  pivot_wider(id_cols = dmel_gene_id, names_from = namespace_1003, values_from = terms) %>%
+  dplyr::select(-c(go_go, go_))
+
+sfari_dmel_ids <- read_csv("./data/SFARI/sfari_human_fly_ortholog.csv") %>%
+  filter(sfari_dmel == TRUE) %>% pull(validated_id)
+
+synapse_localised <- read_tsv("./data/fb_go_lists/synapse_localised.txt", col_names = FALSE) %>% pull(X1)
+synapse_organization <- read_tsv("./data/fb_go_lists/synapse_organization.txt", col_names = FALSE) %>% pull(X1)
+synaptic_signalling <- read_tsv("./data/fb_go_lists/synaptic_signalling.txt", col_names = FALSE) %>% pull(X1)
+
+df_raw_merge <- df %>%
+  filter(!is.na(dmel_gene_id)) %>%
+  group_by(dmel_gene_id, dmel_gene_name) %>%
+  summarise(mmus_gene_ids = paste0(gene_id, collapse = ", "),
+            mmus_gene_symbols = paste0(gene_symbol, collapse = ", "),
+            rna_in_protrusion = max(rna_in_protrusion),
+            mean_tpm_across_dataset = max(mean_tpm_across_dataset),
+            enriched_in_protrusion = max(enriched_in_protrusion),
+            mean_rna_enrichment_l2fc = max(mean_rna_enrichment_l2fc),
+            translation_in_protrusion = max(translation_in_protrusion),
+            enhanced_translation_in_protrusion = max(enhanced_translation_in_protrusion),
+            mean_translation_enhancement_l2fc = max(mean_translation_enhancement_l2fc),
+            mmus_go_bp = paste0(go_biological_process, collapse = ", "),
+            mmus_go_mf = paste0(go_molecular_function, collapse = ", "),
+            mmus_go_cc = paste0(go_cellular_component, collapse = ", "),
+            ) %>%
+  ungroup() %>%
+  mutate(sfari_dmel = if_else(dmel_gene_id %in% sfari_dmel_ids, TRUE, FALSE)) %>%
+  left_join(fly_go_ens96, by = "dmel_gene_id") %>%
+  mutate(synapse_localised = if_else(dmel_gene_id %in% synapse_localised, TRUE, FALSE),
+         synapse_organization = if_else(dmel_gene_id %in% synapse_organization, TRUE, FALSE),
+         synaptic_signalling = if_else(dmel_gene_id %in% synaptic_signalling, TRUE, FALSE))
+
+
+## Get each categories 
+df_rna_present <- df_raw_merge %>% 
+  filter(rna_in_protrusion >= 8) %>% as_tibble()
+df_translation_present <- df_raw_merge %>%
+  filter(translation_in_protrusion >= 4) %>% as_tibble()
+df_rna_and_translation_present <- df_raw_merge %>%
+  filter(rna_in_protrusion >= 8 & translation_in_protrusion >= 4) %>% as_tibble()
+df_transcript_enriched <- df_raw_merge %>%
+  filter(enriched_in_protrusion >= 3) %>% as_tibble()
+df_translation_enriched <- df_raw_merge %>%
+  filter(enhanced_translation_in_protrusion >= 3) %>% as_tibble()
+df_enriched_transcription_and_translation <- df_raw_merge %>%
+  filter(enriched_in_protrusion >= 3 & enhanced_translation_in_protrusion >= 3) %>% as_tibble()
 
 overview_df <- tibble(
-  category = c("Transcript present (n>=8)", "Translation present (n>=3)", "Transcript enriched (n>=3)", "Translation enriched (n>=3)"),
-  gene_count = c(
-    summary_table %>%
-      filter(rna_in_protrusion >= 8) %>% nrow(),
-    summary_table %>%
-      filter(translation_in_protrusion >= 3) %>% nrow(),
-    summary_table %>%
-      filter(enriched_in_protrusion >= 3) %>% nrow(),
-    summary_table %>%
-      filter(enhanced_translation_in_protrusion >= 3) %>% nrow()
+  glial_protrusion_category = c("Transcript present (8 of 12)", 
+               "Translation present (4 of 4)", 
+               "Transcript and translation both present",
+               "Transcript enriched (3 of 4)", 
+               "Translation enriched (3 of 4)",
+               "Transcript and translation both enriched"),
+  dfs = list(
+    df_rna_present,
+    df_translation_present,
+    df_rna_and_translation_present,
+    df_transcript_enriched,
+    df_translation_enriched,
+    df_enriched_transcription_and_translation
   )
 )
+
+filter_go_terms <- function(df, search_term){
+  df %>% 
+    dplyr::filter(
+      str_detect(go_biological_process, search_term) |
+        str_detect(go_molecular_function, search_term) |
+        str_detect(go_cellular_component, search_term)
+      )
+}
+
+get_gene_names <- function(x){
+  x %>% pull(dmel_gene_name) %>% paste0(collapse = ", ")
+}
+
+count_df <- overview_df %>%
+  mutate(total_fly_gene_count = map_dbl(dfs, ~ nrow(.x))) %>%
+  mutate(SFARI = map_dbl(dfs, ~ filter(.x, sfari_dmel == TRUE) %>% nrow())) %>%
+  mutate(RNA_binding = map_dbl(dfs, ~ filter_go_terms(.x, "RNA binding") %>% nrow())) %>%
+  mutate(RNA_stability = map_dbl(dfs, ~ filter_go_terms(.x, "RNA stability") %>% nrow())) %>%
+  mutate(actin_microtubule = map_dbl(dfs, ~ filter_go_terms(.x, "actin|microtubule") %>% nrow())) %>%
+  mutate(translation_regulation = map_dbl(dfs, ~ filter_go_terms(.x, "regulation of translation") %>% nrow())) %>%
+  mutate(ribosome_associated = map_dbl(dfs, ~ filter_go_terms(.x, "ribosome") %>% nrow())) %>%
+  mutate(synapse_localised = map_dbl(dfs, ~ filter(.x, synapse_localised == TRUE) %>% nrow())) %>%
+  mutate(synapse_organization = map_dbl(dfs, ~ filter(.x, synapse_organization == TRUE) %>% nrow())) %>%
+  mutate(synaptic_signalling = map_dbl(dfs, ~ filter(.x, synaptic_signalling == TRUE) %>% nrow())) %>%
+  mutate(locomotorly_regulation = map_dbl(dfs, ~ filter_go_terms(.x, "locomotor") %>% nrow())) %>%
+  mutate(molecular_motor_activity = map_dbl(dfs, ~ filter_go_terms(.x, "motor activity") %>% nrow())) %>%
+  dplyr::select(- dfs)
+
+gene_name_df <- overview_df %>%
+  mutate(total_fly_gene_count = map_dbl(dfs, ~ nrow(.x))) %>%
+  mutate(SFARI = map_chr(dfs, ~ filter(.x, sfari_dmel == TRUE) %>% get_gene_names())) %>%
+  mutate(RNA_binding = map_chr(dfs, ~ filter_go_terms(.x, "RNA binding") %>% get_gene_names())) %>%
+  mutate(RNA_stability = map_chr(dfs, ~ filter_go_terms(.x, "RNA stability") %>% get_gene_names())) %>%
+  mutate(actin_microtubule = map_chr(dfs, ~ filter_go_terms(.x, "actin|microtubule") %>% get_gene_names())) %>%
+  mutate(translation_regulation = map_chr(dfs, ~ filter_go_terms(.x, "regulation of translation") %>% get_gene_names())) %>%
+  mutate(ribosome_associated = map_chr(dfs, ~ filter_go_terms(.x, "ribosome") %>% get_gene_names())) %>%
+  mutate(synapse_localised = map_chr(dfs, ~ filter(.x, synapse_localised == TRUE) %>% get_gene_names())) %>%
+  mutate(synapse_organization = map_chr(dfs, ~ filter(.x, synapse_organization == TRUE) %>% get_gene_names())) %>%
+  mutate(synaptic_signalling = map_chr(dfs, ~ filter(.x, synaptic_signalling == TRUE) %>% get_gene_names())) %>%
+  mutate(locomotorly_regulation = map_chr(dfs, ~ filter_go_terms(.x, "locomotor") %>% get_gene_names())) %>%
+  mutate(molecular_motor_activity = map_chr(dfs, ~ filter_go_terms(.x, "motor activity") %>% get_gene_names())) %>%
+  dplyr::select(- dfs)
+
+df_raw_merge %>%
+  ungroup() %>%
+  filter(rna_in_protrusion >= 8 | translation_in_protrusion >= 4) %>%
+  dplyr::select(dmel_gene_name, mmus_gene_symbols, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component) %>%
+  write_tsv("~/Desktop/Dmel_glia_localised-or-translated-genes.txt")
+
+write_tsv(count_df, "~/Desktop/Dmel_interesting-GO-categories1.txt")
+write_tsv(gene_name_df, "~/Desktop/Dmel_interesting-GO-categories2.txt")
+
+df_raw_merge %>%
+  filter(sfari_dmel == TRUE) %>%
+  filter(enriched_in_protrusion >= 3 & enhanced_translation_in_protrusion >= 3) %>%
+  pull(dmel_gene_name)
+
+
 
 
 
@@ -67,7 +207,7 @@ summary_table %>%
 
 ## Transalated in protrusion
 summary_table %>%
-  filter(translation_in_protrusion >= 3) %>% pull(gene_id) -> b
+  filter(translation_in_protrusion >= 4) %>% pull(gene_id) -> b
 
 ## Transcript enriched in protrusion
 summary_table %>%
@@ -77,22 +217,15 @@ summary_table %>%
 summary_table %>%
   filter(enhanced_translation_in_protrusion >= 3) %>% pull(gene_id) -> d
 
+intersect(a, b) %>% length()
 intersect(c, d) %>% length()
-intersect(a, d) %>% length()
 
 ```
 
 
 ```{r}
 ## GO filter function 
-filter_go_terms <- function(df, search_term){
-  df %>% 
-    dplyr::filter(
-      str_detect(go_biological_process, search_term) |
-        str_detect(go_molecular_function, search_term) |
-        str_detect(go_cellular_component, search_term)
-      )
-}
+
 
 ##
 summary_table %>% 
