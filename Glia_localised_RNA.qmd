@@ -170,6 +170,7 @@ count_df <- overview_df %>%
 
 gene_name_df <- overview_df %>%
   mutate(total_fly_gene_count = map_dbl(dfs, ~ nrow(.x))) %>%
+  mutate(total_fly_genes = map_chr(dfs, ~ get_gene_names(.x))) %>% 
   mutate(SFARI = map_chr(dfs, ~ filter(.x, sfari_dmel == TRUE) %>% get_gene_names())) %>%
   mutate(RNA_binding = map_chr(dfs, ~ filter_go_terms(.x, "RNA binding") %>% get_gene_names())) %>%
   mutate(RNA_stability = map_chr(dfs, ~ filter_go_terms(.x, "RNA stability") %>% get_gene_names())) %>%
@@ -222,14 +223,15 @@ intersect(c, d) %>% length()
 
 ```
 
+### DF for MK
 
 ```{r}
-## GO filter function 
-
-
-##
-summary_table %>% 
-  filter_go_terms("RNA stability")
+df_raw_merge %>%
+  dplyr::select(-contains("mmus_go")) %>%
+  rename_with(~ str_c("dmel_biomart_", .x), contains("go_")) %>%
+  rename_with(~ str_c("fb_go_", .x), contains("synap")) %>%
+  write_tsv("~/Desktop/glial-localised-RNA_dmel-conversion.txt")
+  
 
 
 
