@@ -190,8 +190,8 @@ df_raw_merge %>%
   dplyr::select(dmel_gene_name, mmus_gene_symbols, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component) %>%
   write_tsv("~/Desktop/Dmel_glia_localised-or-translated-genes.txt")
 
-write_tsv(count_df, "~/Desktop/Dmel_interesting-GO-categories1.txt")
-write_tsv(gene_name_df, "~/Desktop/Dmel_interesting-GO-categories2.txt")
+# write_tsv(count_df, "~/Desktop/Dmel_interesting-GO-categories1.txt")
+# write_tsv(gene_name_df, "~/Desktop/Dmel_interesting-GO-categories2.txt")
 
 df_raw_merge %>%
   filter(sfari_dmel == TRUE) %>%
