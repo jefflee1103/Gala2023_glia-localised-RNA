@@ -5,24 +5,28 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r Environment}
+
+# CONVERT MOUSE TO DROSOPHILA
+
+  Convert mouse glial-protrusion-localised transcript to high confidence Dmel homologs 
+
+```{r}
 library(tidyverse)
 library(qs)
 library(biomaRt)
 library(janitor)
-library(kableExtra)
 library(ggbeeswarm)
-
 ```
 
-# Glia localised RNA
+## Convert using DIOPT 
 
-## Overview of the glial localised RNA data 
-
-Total 12 datasets (8 transcriptome + 4 translatome datasets). 
+  DIOPT score >= 8 cutoff
 
 ```{r}
-summary_table <- readRDS("./data/summary_table.RDS") %>% clean_names()
+## Mouse summary table from Dalia's RNA synaptic glia repo
+summary_table <- readRDS("./data/summary_table.RDS") %>% clean_names() 
+
+## DIOPT data
 diopt_mousetofly <- qread("./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
 
 ## Get mouse to fly conversion table 
@@ -55,7 +59,11 @@ df <- summary_table %>%
       dplyr::select(mmus_gene_id, dmel_gene_id, dmel_gene_name),
     by = c("gene_id" = "mmus_gene_id")
   )
+```
 
+## Add GO annotations from biomart
+
+```{r}
 ## Dmel GO annotations
 fly_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "dmelanogaster_gene_ensembl", 
                         host = "https://apr2019.archive.ensembl.org")
@@ -85,7 +93,7 @@ synapse_localised <- read_tsv("./data/fb_go_lists/synapse_localised.txt", col_na
 synapse_organization <- read_tsv("./data/fb_go_lists/synapse_organization.txt", col_names = FALSE) %>% pull(X1)
 synaptic_signalling <- read_tsv("./data/fb_go_lists/synaptic_signalling.txt", col_names = FALSE) %>% pull(X1)
 
-df_raw_merge <- df %>%
+gl_dmel <- df %>%
   filter(!is.na(dmel_gene_id)) %>%
   group_by(dmel_gene_id, dmel_gene_name) %>%
   summarise(mmus_gene_ids = paste0(gene_id, collapse = ", "),
@@ -108,19 +116,32 @@ df_raw_merge <- df %>%
          synapse_organization = if_else(dmel_gene_id %in% synapse_organization, TRUE, FALSE),
          synaptic_signalling = if_else(dmel_gene_id %in% synaptic_signalling, TRUE, FALSE))
 
+qsave(gl_dmel, './output/glia-localised-rna_dmel-converted.qs')
 
-## Get each categories 
-df_rna_present <- df_raw_merge %>% 
+```
+
+## Save central df
+
+```{r}
+write_tsv(gl_dmel, './glia-localised-rna.txt')
+```
+
+
+## Imtermediate gene list for Ilan
+
+```{r}
+## Get separate df for each categories 
+df_rna_present <- gl_dmel %>% 
   filter(rna_in_protrusion >= 8) %>% as_tibble()
-df_translation_present <- df_raw_merge %>%
+df_translation_present <- gl_dmel %>%
   filter(translation_in_protrusion >= 4) %>% as_tibble()
-df_rna_and_translation_present <- df_raw_merge %>%
+df_rna_and_translation_present <- gl_dmel %>%
   filter(rna_in_protrusion >= 8 & translation_in_protrusion >= 4) %>% as_tibble()
-df_transcript_enriched <- df_raw_merge %>%
+df_transcript_enriched <- gl_dmel %>%
   filter(enriched_in_protrusion >= 3) %>% as_tibble()
-df_translation_enriched <- df_raw_merge %>%
+df_translation_enriched <- gl_dmel %>%
   filter(enhanced_translation_in_protrusion >= 3) %>% as_tibble()
-df_enriched_transcription_and_translation <- df_raw_merge %>%
+df_enriched_transcription_and_translation <- gl_dmel %>%
   filter(enriched_in_protrusion >= 3 & enhanced_translation_in_protrusion >= 3) %>% as_tibble()
 
 overview_df <- tibble(
@@ -184,118 +205,501 @@ gene_name_df <- overview_df %>%
   mutate(molecular_motor_activity = map_chr(dfs, ~ filter_go_terms(.x, "motor activity") %>% get_gene_names())) %>%
   dplyr::select(- dfs)
 
-df_raw_merge %>%
-  ungroup() %>%
-  filter(rna_in_protrusion >= 8 | translation_in_protrusion >= 4) %>%
-  dplyr::select(dmel_gene_name, mmus_gene_symbols, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component) %>%
-  write_tsv("~/Desktop/Dmel_glia_localised-or-translated-genes.txt")
+# gl_dmel %>%
+#   ungroup() %>%
+#   filter(rna_in_protrusion >= 8 | translation_in_protrusion >= 4) %>%
+#   dplyr::select(dmel_gene_name, mmus_gene_symbols, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component) %>%
+#   write_tsv("~/Desktop/Dmel_glia_localised-or-translated-genes.txt")
 
 write_tsv(count_df, "~/Desktop/Dmel_interesting-GO-categories1.txt")
 write_tsv(gene_name_df, "~/Desktop/Dmel_interesting-GO-categories2.txt")
 
-df_raw_merge %>%
-  filter(sfari_dmel == TRUE) %>%
-  filter(enriched_in_protrusion >= 3 & enhanced_translation_in_protrusion >= 3) %>%
-  pull(dmel_gene_name)
-
-
-
-
-
-## Localised to protrusion 
-summary_table %>%
-  filter(rna_in_protrusion >= 8) %>% pull(gene_id) -> a
-
-## Transalated in protrusion
-summary_table %>%
-  filter(translation_in_protrusion >= 4) %>% pull(gene_id) -> b
-
-## Transcript enriched in protrusion
-summary_table %>%
-  filter(enriched_in_protrusion >= 3) %>% pull(gene_id) -> c
-
-## Translation enriched in protrusion 
-summary_table %>%
-  filter(enhanced_translation_in_protrusion >= 3) %>% pull(gene_id) -> d
-
-intersect(a, b) %>% length()
-intersect(c, d) %>% length()
-
 ```
 
-### DF for MK
 
-```{r}
-df_raw_merge %>%
-  dplyr::select(-contains("mmus_go")) %>%
-  rename_with(~ str_c("dmel_biomart_", .x), contains("go_")) %>%
-  rename_with(~ str_c("fb_go_", .x), contains("synap")) %>%
-  write_tsv("~/Desktop/glial-localised-RNA_dmel-conversion.txt")
+\newpage
+
+
+# INCORPORATE FLY CELL ATLAS DATA
+
+  Make use of FCA single-nuclei sequencing data to find which transcripts are actually expressed in adult glia 
   
+```{r}
+library(SCopeLoomR)
+library(tidyverse)
+library(qs)
+library(skimr)
+library(ggbeeswarm)
+library(colorspace)
+library(ggridges)
+library(furrr)
+library(patchwork)
+
+plan(multisession, workers = 4)
+```
+
+## Read glia loom from FCA
+
+  Loom file downloaded from Aerts lab Scope 10x glia stringent filtering
+
+```{r}
+## Open connection to loom
+loom_path <- './data/FCA/s_fca_biohub_glial_cell_10x.loom'
+loom <- open_loom(loom_path)
+loom
+
+## Get digital gene expression matrix (dgem) dataframe
+dgem <- get_dgem(loom)
+dgem_tidy <- dgem %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_name") %>%
+  pivot_longer(-gene_name, 
+               names_to = "cell_id",
+               values_to = "dgem") 
+
+## Get cell annotations and embeddings 
+embeddings <- get_embeddings(loom) %>%
+  imap_dfc(~ pluck(.x) %>% 
+            as.data.frame() %>%
+            setNames(c(paste0(.y, "_x"), paste0(.y, "_y")))) %>%
+  rownames_to_column(var = "cell_id") %>%
+  janitor::clean_names()
+
+cell_anno <- get_cell_annotation(loom) %>%
+  rownames_to_column(var = "cell_id") %>%
+  left_join(embeddings, by = "cell_id") %>%
+  dplyr::select(cell_id, age, annotation, annotation__ontology_id, n_counts, n_genes, percent_mito, sex, tissue, contains("hvg"))
+
+cell_anno_summary <- cell_anno %>%
+  dplyr::select(annotation, annotation__ontology_id) %>%
+  group_by(annotation, annotation__ontology_id) %>%
+  summarise(n_cell = n()) 
+```
+
+## Filter out non-glial cells 
+
+```{r}
+## Glia annotations to keep
+glia_anno <- c(
+  "adult antenna glial cell",
+  "adult brain cell body glial cell",
+  "adult brain perineurial glial cell",
+  "adult glial cell",
+  "adult lamina epithelial/marginal glial cell",
+  "adult optic chiasma glial cell",
+  "adult reticular neuropil associated glial cell",
+  "cell body glial cell",
+  "CNS surface associated glial cell",
+  "ensheathing glial cell",
+  "optic-lobe-associated cortex glial cell",
+  "perineurial glial sheath",
+  "peripheral glial cell",
+  "subperineurial glial cell"
+)
+
+## Filter and get pure-glia data
+all_glia_cell_anno <- filter(cell_anno, annotation %in% glia_anno)
+all_glia_cell_ids <- pull(all_glia_cell_anno, cell_id)
+all_glia_dgem <- filter(dgem_tidy, cell_id %in% all_glia_cell_ids)
+# qsave(all_glia_dgem, "~/Downloads/all_glia_dgem.qs")
+
+rm(dgem, dgem_tidy, embeddings, cell_anno, cell_anno_summary)
+
+all_glia_dgem_by_gene <- all_glia_dgem %>%
+  group_by(gene_name) %>%
+  summarise(n_exp_cell = sum(dgem > 0),
+            sum_dgem = sum(dgem)) %>%
+  ungroup() %>%
+  mutate(pct_exp_cell = (n_exp_cell / length(unique(all_glia_dgem$cell_id))) * 100) %>%
+  mutate(exp_level_within_expressing_cell = sum_dgem / n_exp_cell) 
+```
+
+## Plot glia cell type counts and their t-SNE
+
+```{r}
+## Cell counts per glia type
+all_glia_cell_anno %>%
+  group_by(annotation) %>%
+  summarise(cell_count = n()) %>%
+  ggplot(aes(x = annotation, y = cell_count, fill = annotation)) + 
+  geom_col() + 
+  geom_label(aes(x = annotation, y = cell_count + 100, label = cell_count),
+             inherit.aes = FALSE) + 
+  labs(title = paste0("Annotated glia cell types (total n = ", nrow(all_glia_cell_anno), " cells)"),
+       subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+       x = "",
+       y = "Cell count") + 
+  scale_fill_viridis_d() +
+  theme_gray(base_size = 12) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+## Gene counts per glia type
+all_glia_cell_anno %>%
+  ggplot(aes(x = annotation, y = n_genes, colour = annotation)) +
+  geom_quasirandom(size = 1, alpha = 0.3, stroke = 0) +
+  scale_colour_viridis_d() +
+  labs(title = "Number of genes detected per cell",
+       subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+       x = "",
+       y = "Gene count") + 
+  theme_gray(base_size = 12) +
+  theme(legend.position = "none") +
+  coord_flip() +
+  geom_quasirandom(aes(x = "TOTAL", y = n_genes),
+                   size = 1, alpha = 0.3)
 
 
-
+## t-SNE of glia type
+all_glia_cell_anno %>%
+  ggplot(aes(x = hvg_t_sne_x,
+             y = hvg_t_sne_y,
+             colour = annotation)) +
+  labs(title = "Annotated glia cell types - adult fly (t-SNE)",
+       subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+       colour = "") + 
+  geom_point(alpha = 0.8, size = 1, stroke = 0) +
+  scale_colour_viridis_d() +
+  theme_void(base_size = 12) +
+  theme(legend.position = "none")
 
 ```
 
+## Plot gene expression in all-glia 
 
-## Get D.mel genes for mouse 
+```{r}
+## t-SNE plot
+plot_gene_tsne <- function(gene, palette, limit_counts){
+  counts <- all_glia_dgem %>% filter(gene_name == gene)
+  df <- left_join(all_glia_cell_anno, counts, by = "cell_id") %>%
+    mutate(count = ifelse(dgem == 0, NA, dgem))
+  ggplot(df, aes(x = hvg_t_sne_x, y = hvg_t_sne_y, colour = count)) +
+    geom_point(size = 1, alpha = 0.9, stroke = 0) +
+    labs(title = paste0(gene, " expression"),
+         subtitle = "Fly cell atlas - single-nucleus RNA-seq") + 
+    # scale_colour_gradientn(colours = c("gray90", "gray90", palette),
+    #                        values = c(0, 0.1, 1),
+    #                        limits = c(0, limit_counts)) +
+    scale_colour_gradient(low = "gray50", high = palette, na.value = "gray80",
+                        limits = c(0, limit_counts),
+                        oob = scales::squish) +
+    theme_void(base_size = 15) +
+    theme(legend.position = "bottom")
+}
+
+plot_gene_tsne("DIP-lambda", "red", 8)
+
+# septate_junction_gene_names <- read.delim(pipe("pbpaste"), col.names = "genes") %>% pull(genes)
+# map(septate_junction_gene_names, ~
+#       if(.x %in% all_glia_dgem_by_gene$gene_name){
+#         plot_gene_tsne(.x, "red", 2)
+#       } else {
+#         mtcars %>% ggplot(aes(x = cyl, y = cyl)) + labs(title = .x)
+#       }) %>% wrap_plots()
+# ggsave("~/Desktop/test.jpg", width = 30, height = 35)
+
+## Ridge plot
+plot_gene_ridge <- function(gene){
+  counts <- all_glia_dgem %>% filter(gene_name == gene)
+  df <- left_join(all_glia_cell_anno, counts, by = "cell_id")
+  ggplot(df, aes(x = log2(dgem + 1), y = annotation, fill = annotation)) + 
+    geom_density_ridges() + 
+    labs(title = paste0(gene, " expression in glial cell types"),
+         subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+         x = "RNA expression: log2(CPM+1)", y = "") +
+    scale_fill_viridis_d() +
+    # scale_x_continuous(trans = "log2") + 
+    theme_classic(base_size = 15) +
+    theme(legend.position = "none")
+}
+
+plot_gene_ridge("Mdr65")
+```
+
+## Glial subtype summary
+
+```{r}
+## Get dgem summary per glia subtype
+glia_type_dgem_by_gene <- glia_anno %>%
+  set_names() %>%
+  map_dfr(function(x){
+    cell_type_id <- filter(all_glia_cell_anno, annotation == x) %>% pull(cell_id)
+    filter(all_glia_dgem, cell_id %in% cell_type_id) %>%
+      group_by(gene_name) %>%
+      summarise(n_exp_cell = sum(dgem > 0),
+                sum_dgem = sum(dgem)) %>%
+      ungroup() %>%
+      mutate(pct_exp_cell = (n_exp_cell / length(cell_type_id)) * 100) %>%
+      mutate(exp_level_within_expressing_cell = sum_dgem / n_exp_cell) %>%
+      mutate(glia_cell_type = x)
+  }) %>%
+  bind_rows(mutate(all_glia_dgem_by_gene, glia_cell_type = "Total"))
+
+# qsave(glia_type_dgem_by_gene, "./data/FCA/glia_type_dgem_by_gene.qs") 
+# glia_type_dgem_by_gene <- qread("./data/FCA/glia_type_dgem_by_gene.qs")
+
+## Plot percentage of cells within glia subtype expressing certain gene
+plot_gene_subtype <- function(gene){
+  df <- glia_type_dgem_by_gene %>%
+    filter(gene_name == gene)
+    ggplot(df, aes(x = glia_cell_type, y = pct_exp_cell, fill = glia_cell_type)) + 
+    geom_col(width = 0.7) + 
+      geom_hline(yintercept = filter(df, glia_cell_type == "Total") %>% pull(pct_exp_cell), 
+                 linetype = "dashed", colour = "gray50") + 
+    geom_label(aes(x = glia_cell_type, y = pct_exp_cell + 2, label = paste0(round(pct_exp_cell, digits = 0), "%")),
+               inherit.aes = FALSE) + 
+    labs(title = paste0("Percentage of glial subtype cells expressing ", gene),
+         subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+         x = "",
+         y = "Percentage") + 
+    scale_fill_viridis_d() +
+    theme_gray(base_size = 12) +
+    theme(legend.position = "none") +
+    coord_flip(ylim = c(0, 100))
+}
+
+plot_gene_subtype("nrv2")
+
+glia_type_dgem_by_gene %>%
+  group_by(glia_cell_type) %>%
+  summarise(n_transcriptome = sum(pct_exp_cell >= 5)) %>% ungroup() %>%
+  # filter(glia_cell_type != "Total") %>%
+  ggplot(aes(x = glia_cell_type, y = n_transcriptome, fill = glia_cell_type)) + 
+  geom_col(width = 0.7) + 
+  geom_label(aes(x = glia_cell_type, y = n_transcriptome + 2, label = n_transcriptome),
+             inherit.aes = FALSE) + 
+  labs(title = paste0("Number of genes expressed by glial subtype"),
+       subtitle = "Fly cell atlas - single-nucleus RNA-seq",
+       x = "",
+       y = "Gene count") + 
+  scale_fill_viridis_d() +
+  theme_gray(base_size = 12) +
+  theme(legend.position = "none") + 
+  coord_flip()
+
+```
+
+## Join to the localisation dataframe
+
+```{r}
+##
+gl_dmel <- qread("./output/glia-localised-rna_dmel-converted.qs") 
+
+## 
+plot_fca_support <- function(glia_cell_type, pct_cutoff){
+  glia_type_transcriptome_names_5 <- glia_anno %>%
+    set_names() %>%
+    map(~glia_type_dgem_by_gene %>%
+          filter(glia_cell_type == .x) %>%
+          filter(pct_exp_cell >= pct_cutoff) %>%
+          pull(gene_name)
+    )
+  total_gene_names_from_5 <- list("Total" = unlist(glia_type_transcriptome_names_5) %>% unique())
+  glia_type_transcriptome_names_5 <- c(total_gene_names_from_5, glia_type_transcriptome_names_5)
+  names(glia_type_transcriptome_names_5)
+  
+  ##
+  namespace <- gl_dmel %>% pull(dmel_gene_name) 
+  expression <- glia_type_transcriptome_names_5 %>%
+    imap_dfc(~ tibble(col = namespace %in% .x) %>% setNames(.y)) %>%
+    bind_cols(tibble(dmel_gene_name = namespace))
+  
+  df_localised_FCA <- left_join(gl_dmel, expression) %>%
+    mutate(rna_present = if_else(rna_in_protrusion >= 8, TRUE, FALSE)) %>%
+    mutate(translation_present = if_else(translation_in_protrusion >= 4, TRUE, FALSE)) %>%
+    mutate(rna_and_translation_present = if_else(rna_in_protrusion >= 8 & translation_in_protrusion >= 4, TRUE, FALSE)) %>%
+    mutate(transcript_enriched = if_else(enriched_in_protrusion >= 3, TRUE, FALSE)) %>%
+    mutate(translation_enriched = if_else(enhanced_translation_in_protrusion >= 3, TRUE, FALSE)) %>%
+    mutate(transcription_and_translation_enriched = if_else(enriched_in_protrusion >= 3 & enhanced_translation_in_protrusion >= 3, TRUE, FALSE))
+  
+  index <- c("rna_present", "translation_present", "rna_and_translation_present", "transcript_enriched", "translation_enriched", "transcription_and_translation_enriched") %>% set_names()
+  
+  FCA_supported_genes_summary <- index %>%
+    imap_dfr(~
+               tibble(
+                 localisation_type = c(.y, .y),
+                 type = c("potentially localised", "FCA supported"),
+                 gene_count = c(
+                   pull(df_localised_FCA, !!sym(.x)) %>% sum(na.rm = TRUE),
+                   filter(df_localised_FCA, !!sym(glia_cell_type) == TRUE) 
+                   %>% pull(!!sym(.x)) %>% sum(na.rm = TRUE)
+                 )
+               )
+    )
+  
+  plot <- FCA_supported_genes_summary %>%
+    mutate(localisation_type = fct_relevel(localisation_type, rev(index))) %>%
+    ggplot(aes(x = localisation_type, y = gene_count, fill = type)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+    geom_label(aes(x = localisation_type, y = gene_count + 100, label = gene_count, group = type),
+               position = position_dodge(width = 0.8), inherit.aes = FALSE) + 
+    labs(title = "Glia-localised mouse RNAs → Fly homologs. Are they FCA supported?",
+         subtitle = paste0("In ", glia_cell_type, " type + Expressed in at least ", pct_cutoff, "% of cells"),
+         x = "",
+         y = "Gene count",
+         fill = "") + 
+    scale_fill_manual(values = c("sandybrown", "gray70")) + 
+    theme_minimal(base_size = 12) + 
+    theme(legend.position = "bottom") + 
+    coord_flip()
+  
+  return(list(df_localised_FCA, plot))
+}
+
+##
+df_localised_FCA <- plot_fca_support("Total", 2.5)[[1]]
+plot_fca_support("Total", 2.5)[[2]]
+qsave(df_localised_FCA, './output/glia-localised-rna_fca-incorporated.qs')
+
+```
+
+## Update central df 
+
+```{r}
+write_tsv(df_localised_FCA, './glia-localised-rna.txt')
+```
+
+
+\newpage
+
+
+# INCORPORATE MIMIC/CRIMIC
+
+  Which glial protrusion localised RNA have mimic/crimic lines for potential genetic manupulation?
+
+```{r}
+library(tidyverse)
+library(qs)
+```
+
+## Get Mimic and Crimic information
+
+```{r}
+## CRIMIC
+crimic_raw <- read_tsv("./data/Flybase/CRIMIC_raw.txt") %>% janitor::clean_names()
+crimic_raw %>% collapse::descr(cols = "name")
+
+crimic_gene_names <- crimic_raw %>%
+  filter(str_detect(inserted_element, "CRIMIC")) %>%
+  filter(stocks != "-") %>%
+  pull(affected_genes) %>%
+  str_split(pattern = " <newline> ") %>% unlist() %>% unique()
+
+## MIMIC
+mimic_raw <- read_tsv("./data/Flybase/MIMIC_raw.txt") %>% janitor::clean_names()
+mimic_raw %>% collapse::descr(cols = "inserted_element")
+
+mimic_gene_names <- mimic_raw %>%
+  filter(str_detect(inserted_element, "Mi\\{MIC\\}")) %>%
+  filter(stocks != "-") %>%
+  pull(affected_genes) %>%
+  str_split(pattern = " <newline> ") %>% unlist() %>% unique()
+
+## Both MIMIC and CRIMIC
+mimic_and_crimic_gene_names <- c(mimic_gene_names, crimic_gene_names) %>% unique()
+```
+
+## Join to the FCA dataframe 
+
+```{r}
+df_with_mimic <- qread('./output/glia-localised-rna_fca-incorporated.qs') %>%
+  mutate(mimic_or_crimic = if_else(dmel_gene_name %in% mimic_and_crimic_gene_names, TRUE, FALSE))
+
+qsave(df_with_mimic, './output/glia-localised-rna_mimic-incorporated.qs')
+```
+
+## Update central df
+
+```{r}
+write_tsv(df_with_mimic, './glia-localised-rna.txt')
+```
+
+
+\newpage
+
+
+# INCORPORATE IMP SYP TARGETS 
+
+```{r}
+library(tidyverse)
+library(qs)
+library(skimr)
+```
+
+## Insertect with iCLIP summary dataset 
+
+```{r}
+## Get dataframes 
+gl <- qread('./output/glia-localised-rna_mimic-incorporated.qs')
+lclip_summary <- qread('~/Documents/LCLIP/analysis_data/lclip_summary.qs') # LCLIP folder
+
+## Map Imp and Syp targets to the glia-localised RNA df 
+lclip_gene_id <- lclip_summary %>% map(~ pull(.x, gene_id))
+gl_is <- gl %>%
+  mutate(L1_Imp = if_else(dmel_gene_id %in% lclip_gene_id$L1_Imp, TRUE, FALSE)) %>%
+  mutate(L2_Imp = if_else(dmel_gene_id %in% lclip_gene_id$L2_Imp, TRUE, FALSE)) %>%
+  mutate(L2_Syp = if_else(dmel_gene_id %in% lclip_gene_id$L2_Syp, TRUE, FALSE)) %>%
+  mutate(L3_Syp = if_else(dmel_gene_id %in% lclip_gene_id$L3_Syp, TRUE, FALSE)) %>%
+  mutate(Imp_target = if_else(L1_Imp == TRUE | L2_Imp == TRUE, TRUE, FALSE)) %>%
+  mutate(Syp_target = if_else(L2_Syp == TRUE | L3_Syp == TRUE, TRUE, FALSE)) %>%
+  mutate(Imp_and_Syp_target = if_else(Imp_target == TRUE & Syp_target == TRUE, TRUE, FALSE))
+
+gl_is %>%
+  filter(rna_in_protrusion >= 8 ) %>%
+  skim()
+
+qsave(gl_is, './output/glia-localised-rna_istarget-incorporated.qs')
+```
+
+## Update central df
+
+```{r}
+write_tsv(gl_is, './glia-localised-rna.txt')
+```
+
+
+\newpage
+
+
+#
 
 ```{r}
 
 
-mouse_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", 
-                        host = "https://apr2019.archive.ensembl.org")
-
-mouse_biomart_attributes <- listAttributes(mouse_mart96)
-
-attributes_wanted <- c("ensembl_gene_id", "dmelanogaster_homolog_ensembl_gene", "dmelanogaster_homolog_associated_gene_name", "dmelanogaster_homolog_orthology_confidence")
-
-mousetofly_ens96 <- getBM(attributes = attributes_wanted,
-                          mart = mouse_mart96,
-                          filters = "ensembl_gene_id",
-                          values = summary_table$gene_id)
-
-mousetofly_ens96 %>% 
-  group_by(dmelanogaster_homolog_orthology_confidence) %>%
-  summarise(n = n())
-
-mousetofly_ens96 %>%
-  filter(dmelanogaster_homolog_orthology_confidence >= 0) %>%
-  pull(dmelanogaster_homolog_ensembl_gene) %>% unique() %>% length()
-
-
-
-
-
-
-
-fly_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "dmelanogaster_gene_ensembl", 
-                        host = "https://apr2019.archive.ensembl.org")
-
-fly_biomart_attributes <- listAttributes(fly_mart96)
-
-attributes_wanted <- c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene", "mmusculus_homolog_associated_gene_name", "mmusculus_homolog_orthology_confidence")
-
-flytomouse_ens96 <- getBM(attributes = attributes_wanted,
-                          mart = fly_mart96,
-                          filters = "ensembl_gene_id",
-                          values = summary_table$gene_id)
-
-flytomouse_ens96 %>% 
-  group_by(dmelanogaster_homolog_orthology_confidence) %>%
-  summarise(n = n())
-
-
-
-
-
 ```
 
 
+\newpage
 
 
+```{r}
+gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
 
+id_interest <- gl_is %>%
+  filter(rna_in_protrusion >= 8) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+id_interest %>% skim()
+
+id_interest %>%
+  dplyr::select(dmel_gene_id, dmel_gene_name, sfari_dmel, Imp_target, Syp_target, Imp_and_Syp_target) %>%
+  write_csv('~/Desktop/1700-glia-localised-rna_ImpSyptargets.csv')
+
+library(UpSetR)
+movies <- read.csv( system.file("extdata", "movies.csv", package = "UpSetR"), header=T, sep=";" )
+
+upset_df <- id_interest %>%
+  dplyr::select(Imp_target, Syp_target) %>%
+  mutate_all(~ if_else(.x == TRUE, 1, 0))
+
+upset_df %>%
+  as.data.frame() %>%
+  upset(empty.intersections = "on")
+
+```
 
 
 

@@ -49,3 +49,6 @@ po/*~
 rsconnect/
 
 .DS_Store
+
+# Too big
+s_fca_biohub_glial_cell_10x.loom
