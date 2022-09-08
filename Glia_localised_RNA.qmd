@@ -672,7 +672,12 @@ write_tsv(gl_is, './glia-localised-rna.txt')
 \newpage
 
 
+# TEMP PLAYGROUND
+
 ```{r}
+library(tidyverse)
+library(qs)
+
 gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
 
 id_interest <- gl_is %>%
@@ -702,6 +707,77 @@ upset_df %>%
 ```
 
 
+```{r}
+gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
+
+id_interest <- gl_is %>%
+  filter(rna_in_protrusion >= 8) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+id_interest %>% 
+  filter(sfari_dmel == TRUE) %>% nrow()
+
+str <- 'actin|microtubule'
+
+id_interest %>% 
+  filter(str_detect(go_molecular_function, str) |
+         str_detect(go_biological_process, str) |
+         str_detect(go_cellular_component, str)) %>%
+  filter(sfari_dmel == TRUE) %>%
+  geom_bar(aes(x = dmel))
+
+
+
+tmp <- id_interest %>%
+  mutate(actin_microtubule_related = if_else(
+    str_detect(go_molecular_function, 'actin|microtubule') | 
+    str_detect(go_biological_process, 'actin|microtubule') | 
+    str_detect(go_cellular_component, 'actin|microtubule'),
+    TRUE,
+    FALSE
+  )) %>%
+  mutate(RNA_binding = if_else(
+    str_detect(go_molecular_function, 'RNA binding') | 
+    str_detect(go_biological_process, 'RNA binding') | 
+    str_detect(go_cellular_component, 'RNA binding'),
+    TRUE,
+    FALSE
+  )) %>%
+  mutate(ribosome_associated = if_else(
+    str_detect(go_molecular_function, 'ribosome') | 
+    str_detect(go_biological_process, 'ribosome') | 
+    str_detect(go_cellular_component, 'ribosome'),
+    TRUE,
+    FALSE
+  )) %>%
+  mutate(locomotorly_regulation = if_else(
+    str_detect(go_molecular_function, 'locomotor') | 
+    str_detect(go_biological_process, 'locomotor') | 
+    str_detect(go_cellular_component, 'locomotor'),
+    TRUE,
+    FALSE
+  )) %>%
+  mutate(molecular_motor_activity = if_else(
+    str_detect(go_molecular_function, 'motor activity') | 
+    str_detect(go_biological_process, 'motor activity') | 
+    str_detect(go_cellular_component, 'motor activity'),
+    TRUE,
+    FALSE
+  ))
+
+
+colnames(tmp)
+
+
+tmp %>%
+  dplyr::select(dmel_gene_id, dmel_gene_name, mmus_gene_symbols, translation_present, transcript_enriched, translation_enriched, mimic_or_crimic, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component, synapse_localised, synapse_organization, synaptic_signalling, actin_microtubule_related, RNA_binding, ribosome_associated, locomotorly_regulation, molecular_motor_activity, Imp_target, Syp_target) %>%
+  write_csv('~/Desktop/1700_localised_transcript_with_annotations.csv')
+
+
+```
 
 
 
