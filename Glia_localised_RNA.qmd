@@ -724,13 +724,9 @@ nd_genes_list %>% map(~ length(.x))
 gl_nd <- bind_cols(gl_is, nd_genes_int)
 gl_nd %>% qsave("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
 
-
-q <- 90
-m <- 17000 - 200
-n <- 200
-k <- 1700
-
-phyper(q, m, n, k)
+## Test for overrepresentation (enrichment)
+## phyper(overlap - 1, group2, Total - group2, group1, lower.tail = FALSE)
+phyper(90 - 1, 200, 17000 - 200, 1700, lower.tail = FALSE)
 
 ```
 
@@ -750,6 +746,7 @@ write_tsv(gl_nd, './glia-localised-rna.txt')
 library(tidyverse)
 library(qs)
 library(skimr)
+library(UpSetR)
 
 gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
 
