@@ -661,11 +661,83 @@ write_tsv(gl_is, './glia-localised-rna.txt')
 \newpage
 
 
-#
+# INCORPORATE HUMAN DISEASE ASSOCIATIONS
+
+  Incorporate human disease associations with the glial localised transcripts
+  Biomart - Ensemble does not have OMIM annotations 
+  
+  Query Flybase human disease tsv
 
 ```{r}
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(qs)
+
+fb_disease <- read_tsv("./data/Flybase/disease_model_annotations_fb_2022_04.tsv", skip = 4) %>%
+  clean_names()
+
+find_disease_genes <- function(fb_disease, term){
+  fb_disease %>%
+    filter(str_detect(do_term, term)) %>%
+    filter(!str_detect(gene_symbol, "\\\\")) %>%
+    pull(number_number_f_bgn_id) %>%
+    unique() %>%
+    return()
+}
+
+find_disease_terms <- function(fb_disease, term){
+  fb_disease %>%
+    filter(str_detect(do_term, term)) %>%
+    filter(!str_detect(gene_symbol, "\\\\")) %>%
+    pull(do_term) %>%
+    unique() %>%
+    return()
+}
+
+find_disease_terms(fb_disease, "lewy")
+find_disease_genes(fb_disease, "Huntington's disease")
+
+## Get neurodegen genes 
+search_strings <- c("Parkinson's", "Alzheimer", "fragile X syndrome", "Huntington's disease", "amyotrophic", "spinal muscular atrophy") %>% 
+  c(paste(search_strings, collapse = "|")) %>%
+  set_names(c("Parkinson", "Alzheimer", "FXS", "Huntington", "ALS", "SMA", "Neurodegenerative_total"))
+
+nd_genes_list <- search_strings %>%
+  map(~ find_disease_genes(fb_disease, .x))
+
+qsave(nd_genes_list, "./data/Flybase/neurodegenerative_disease_list.qs")
+nd_genes_list <- qread("./data/Flybase/neurodegenerative_disease_list.qs")
+
+## Incorporate into the main dataframe
+gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
+nd_genes_int <- nd_genes_list %>%
+  imap(~{
+    gl_is <- gl_is %>%
+      mutate(!!.y := if_else(dmel_gene_id %in% .x, TRUE, FALSE)) %>%
+      dplyr::select(!!.y)
+  }) %>%
+  bind_cols()
+
+nd_genes_list %>% map(~ length(.x))
+
+gl_nd <- bind_cols(gl_is, nd_genes_int)
+gl_nd %>% qsave("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
 
 
+q <- 90
+m <- 17000 - 200
+n <- 200
+k <- 1700
+
+phyper(q, m, n, k)
+
+```
+
+## Update central df
+
+```{r}
+write_tsv(gl_nd, './glia-localised-rna.txt')
 ```
 
 
@@ -677,10 +749,11 @@ write_tsv(gl_is, './glia-localised-rna.txt')
 ```{r}
 library(tidyverse)
 library(qs)
+library(skimr)
 
-gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
+gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
 
-id_interest <- gl_is %>%
+id_interest <- gl_nd %>%
   filter(rna_in_protrusion >= 8) %>%
   filter(`subperineurial glial cell` == TRUE | 
            `perineurial glial sheath` == TRUE |
