@@ -14,7 +14,8 @@ plan(multisession, workers = 8)
 ## FB disease model annotations
 dismodel_raw <- read_tsv("./data/Flybase/disease_model_annotations_fb_2022_04.tsv", skip = 4) %>%
   setNames(c("current_gene_id", "gene_symbol", "hgnc_id", "do_qualifier", "do_id", "do_term", "allele_used_in_model_fbal", "allele_used_in_model_symbol", "orthology_with_hgnc_id", "orthology_with_symbol", "evidence", "reference")) %>%
-  filter(!str_detect(gene_symbol, "[:alnum:]+\\\\"))
+  filter(!str_detect(gene_symbol, "[:alnum:]+\\\\")) %>%
+  filter(!str_detect(do_qualifier, "DOES NOT"))
 
 dismodel_cleaned <- dismodel_raw %>%
   mutate(do_term = str_replace(do_term, " type [:alnum:]+$", "")) %>%
@@ -115,6 +116,19 @@ gl_disease_statistics <- gl_disease_count %>%
   mutate(log2foldchange = log2(foldchange)) %>%
   mutate(adj_pvalue = p.adjust(pvalue, method = "bonferroni"))
 
+## Dataframe for list of genes 
+gl_disease_gene_list <- gl_disease_statistics %>%
+  dplyr::select(disease, log2foldchange, adj_pvalue, count_in_genome,"count_in_localised_genes" = count_in_gl) %>%
+  filter(-log(adj_pvalue) > 10) %>%
+  arrange(adj_pvalue) %>%
+  mutate(gene_list = map_chr(disease, ~ {
+    filter(dismodel_ens99, do_term == .x) %>% 
+      filter(gene_id %in% id_interest$dmel_gene_id) %>%
+      pull(gene_name) %>% unique() %>% paste(collapse = ", ") %>% sort()
+  })) 
+
+write_tsv(gl_disease_gene_list, "./output/analysis/gl_disease_gene_list_top-pvalue.txt")
+
 # ----- Plot
 
 gl_disease_statistics %>%
@@ -142,11 +156,5 @@ gl_disease_statistics %>%
 ggsave("./output/graphics/disease_association_volcano_plot.pdf", 
   width = 10, height = 8, useDingbats = FALSE)
 
-
-phyper( - 1, 200, 17000 - 200, 1700, lower.tail = FALSE)
-
-
-
-90/200 1700 17000
 
 
