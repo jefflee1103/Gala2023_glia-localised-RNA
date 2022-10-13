@@ -8,7 +8,12 @@ library(tidyverse)
 # need to load appropriate species database
 library(org.Dm.eg.db)
 library(qs)
+library(rrvgo)
 library(ggrepel)
+library(furrr)
+library(simplifyEnrichment)
+library(patchwork)
+plan(multisession, workers = 4)
 
 source("./Rscript/runTopGO.R")
 
@@ -39,7 +44,57 @@ View(gl_go)
 
 write_csv(gl_go, "./output/analysis/gl_go-enrichment.csv")
 
-## 
+# ----- Reduce GO terms 
+
+## Calculate similarity matrix 
+gl_go <- read_csv("./output/analysis/gl_go-enrichment.csv")
+ont_string <- c("BP", "MF", "CC") %>% set_names() 
+
+rrvgo_filt_foldenrichment <- ont_string %>%
+  future_imap(~ {
+    go_df <- filter(gl_go, ontology == .y) %>%
+      filter(foldEnrichment > 2 & bonferroni < 0.01)
+    go_id_vector <- go_df$GO.ID
+    scores <- setNames(go_df$foldEnrichment, go_df$GO.ID)
+    simMatrix <- calculateSimMatrix(go_id_vector, orgdb = "org.Dm.eg.db", ont = .y, method = "Rel")
+    reducedTerms <- reduceSimMatrix(simMatrix, scores, threshold = 0.75, orgdb = "org.Dm.eg.db")
+    output <- list(simMatrix, reducedTerms) %>% set_names(c("simMatrix", "reducedTerms"))
+    return(output)
+  })
+
+rrvgo_filt_bonferroni <- ont_string %>%
+  future_imap(~ {
+    go_df <- filter(gl_go, ontology == .y) %>%
+      filter(foldEnrichment > 2 & bonferroni < 0.01)
+    go_id_vector <- go_df$GO.ID
+    scores <- setNames(-log10(go_df$bonferroni), go_df$GO.ID)
+    simMatrix <- calculateSimMatrix(go_id_vector, orgdb = "org.Dm.eg.db", ont = .y, method = "Rel")
+    reducedTerms <- reduceSimMatrix(simMatrix, scores, threshold = 0.75, orgdb = "org.Dm.eg.db")
+    output <- list(simMatrix, reducedTerms) %>% set_names(c("simMatrix", "reducedTerms"))
+    return(output)
+  })
+
+scatterPlot(rrvgo_filt_foldenrichment$BP$simMatrix, rrvgo_filt_foldenrichment$BP$reducedTerms)
+treemapPlot(rrvgo_filt_foldenrichment$BP$reducedTerms)
+treemapPlot(rrvgo_filt_bonferroni$BP$reducedTerms)
+
+## Try simplify enrichment
+gl_go <- read_csv("./output/analysis/gl_go-enrichment.csv")
+ont_string <- c("BP", "MF", "CC") %>% set_names() 
+
+se_goid <- ont_string %>%
+  map(~{ 
+    filter(gl_go, bonferroni < 0.01 & foldEnrichment > 2) %>%
+      filter(ontology == .x) %>%
+      pull(GO.ID)
+  })
+se_simmat <- future_map(se_goid, ~ GO_similarity(.x, db = "org.Dm.eg.db"))
+future_map(se_simmat, select_cutoff) %>% wrap_plots()
+pdf("~/Desktop/se-test_fc2.0_cutoff0.75.pdf", width = 8, height = 8)
+se_simplify <- map(se_simmat, ~ simplifyGO(.x, control = list(cutoff = 0.75)))
+dev.off()
+
+
 
 # ----- Plotting
 

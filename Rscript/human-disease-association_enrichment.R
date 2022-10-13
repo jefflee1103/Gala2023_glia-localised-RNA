@@ -39,13 +39,7 @@ dismodel_cleaned <- dismodel_raw %>%
   mutate(do_term = str_replace(do_term, "immunodeficiency .+", "immunodeficiency")) %>%
   mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
   mutate(do_term = str_replace(do_term, "hypomyelinating leukodystrophyy .+", "hypomyelinating leukodystrophyy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) %>%
-  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy")) 
+  mutate(do_term = str_replace(do_term, "spinal muscular atrophy .+", "spinal muscular atrophy"))
 
 ## Resolve current gene_id to ens99 gene_id
 ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
@@ -76,6 +70,7 @@ dismodel_ens99 <- bind_rows(resolve_noconflict, resolve_yesconflict_verdict) %>%
   dplyr::select(-gene_symbol, -ens99_gene_id) %>%
   dplyr::select(gene_id, gene_name, everything())
 
+# write_csv(dismodel_ens99, "./data/Flybase/disease_model_annotations_fb_2022_04_ens99.csv")
 
 # ----- Perform statistics of gene set enrichment
 
@@ -158,3 +153,39 @@ ggsave("./output/graphics/disease_association_volcano_plot.pdf",
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+for(i in (conflict$dmel_gene_name)) {
+  id_interest <- id_interest %>%
+    mutate(dmel_gene_id = 
+      if_else(dmel_gene_name == i,
+        filter(ens99, gene_name == i) %>% pull(ens99_gene_id),
+        dmel_gene_id))
+}
+
+
+conflict <- id_interest %>%
+  left_join(ens99, by = c("dmel_gene_id" = "gene_id")) %>%
+  filter(is.na(ens99_gene_id))
+
+View(ens99)
+
+syno
+
+
+intersect(id_interest$dmel_gene_id, ens99$gene_id) %>% length()
+
+id_interest %>% write_tsv("~/Desktop/glia-protrusion-localised-id-interest.txt")
