@@ -1,0 +1,13 @@
+library,Model.system,Species,Separation.method,Data.type,Reference
+Astrocytes-A_protrusion_txn,Astrocyte,Mouse,Protrusion transcriptome,RNA-seq,"Sakers et al, 2017"
+Astrocytes-B_protrusion_trap,Astrocyte,Mouse,Protrusion translatome,TRAP-seq,"Boulay et al, 2017"
+Astrocytes-C_protrusion_trap,Astrocyte,Mouse,Protrusion translatome,TRAP-seq,"Mazare et al, 2020"
+Astrocytes-D_protrusion_txn,Astrocyte,Mouse,Protrusion transcriptome,Helicos-seq,"Thomsen et al, 2013"
+Astrocytes-E_protrusion_txn,Astrocyte-C8S,Mouse,Protrusion transcriptome,Helicos-seq,"Thomsen et al, 2013"
+Myelin-24mo_protrusion_txn,Myelin-24mo,Mouse,Protrusion transcriptome,RNA-seq,"Thakurela et al, 2016"
+Myelin-6mo_protrusion_txn,Myelin-6mo,Mouse,Protrusion transcriptome,RNA-seq,"Thakurela et al, 2017"
+Myelin-P18_protrusion_txn,Myelin-P18,Mouse,Protrusion transcriptome,RNA-seq,"Thakurela et al, 2018"
+Myelin-P75_protrusion_txn,Myelin-P75,Mouse,Protrusion transcriptome,RNA-seq,"Thakurela et al, 2019"
+PCSc_protrusion_txn,Perisyn.-Schwann,Mouse,Whole-cell transcriptome,RNA-seq,"Castro et al, 2020"
+Oligodendrocytes_protrusion_txn,Oligodendrocyte,Rat,Protrusion transcriptome,mRNA-seq,"Azevedo et al, 2018"
+Microglia_protrusion_trap,Microglia,Mouse,Protrusion translatome,TRAP-seq,"Vesek et al, 2021"

@@ -1,0 +1,13 @@
+{
+	"n_targets": 286255,
+	"n_bootstraps": 0,
+	"n_processed": 41000569,
+	"n_pseudoaligned": 31063386,
+	"n_unique": 20335029,
+	"p_pseudoaligned": 75.8,
+	"p_unique": 49.6,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sat Jan 29 14:36:24 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Rnor_ensembl98_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Rnor_Oligodendrocytes_protrusion_txn2 -t 4 /mnt/share/Data/Sequencing/DSG_review/filtered/Rnor_Oligodendrocytes_protrusion_txn2_read1_filtered.fastq.gz /mnt/share/Data/Sequencing/DSG_review/filtered/Rnor_Oligodendrocytes_protrusion_txn2_read2_filtered.fastq.gz"
+}

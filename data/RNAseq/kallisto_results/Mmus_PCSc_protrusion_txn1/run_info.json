@@ -1,0 +1,13 @@
+{
+	"n_targets": 783716,
+	"n_bootstraps": 0,
+	"n_processed": 24777115,
+	"n_pseudoaligned": 20017365,
+	"n_unique": 6256060,
+	"p_pseudoaligned": 80.8,
+	"p_unique": 25.2,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sun Jan 30 18:03:10 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Mmus_PCSc_1 --single -l 200 -s 30 -t 6 /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_PCSc_1_filtered.fastq.gz"
+}

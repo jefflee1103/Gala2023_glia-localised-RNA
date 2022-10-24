@@ -19,12 +19,11 @@ ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
 gene_list <- left_join(dalia_list, ens99, by = c("X1" = "gene_name")) %>%
   dplyr::select(gene_id, "gene_name" = X1) %>%
   mutate(is_in_1700 = if_else(gene_id %in% id_interest$dmel_gene_id, TRUE, FALSE)) %>%
-  arrange(desc(is_in_1700), gene_name)
-
+  arrange(desc(is_in_1700), gene_name) %>%
+  left_join(id_interest, by = c("gene_id" = "dmel_gene_id")) %>%
+  arrange(desc(is_in_1700), desc(rna_in_protrusion))
 
 gene_list
-
-
 
 
 

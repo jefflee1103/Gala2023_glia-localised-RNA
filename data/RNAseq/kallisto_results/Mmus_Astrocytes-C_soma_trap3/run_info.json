@@ -1,0 +1,13 @@
+{
+	"n_targets": 783716,
+	"n_bootstraps": 0,
+	"n_processed": 24606171,
+	"n_pseudoaligned": 23150382,
+	"n_unique": 5301258,
+	"p_pseudoaligned": 94.1,
+	"p_unique": 21.5,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sun Jan 30 05:47:50 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Mmus_Astrocytes-C_wholecell_trap3 --single -l 200 -s 30 -t 6 /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_Astrocytes-C_wholecell_trap3_filtered.fastq.gz"
+}

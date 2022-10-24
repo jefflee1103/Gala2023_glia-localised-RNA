@@ -1,0 +1,13 @@
+{
+	"n_targets": 783716,
+	"n_bootstraps": 0,
+	"n_processed": 18888890,
+	"n_pseudoaligned": 14497819,
+	"n_unique": 1123864,
+	"p_pseudoaligned": 76.8,
+	"p_unique": 5.9,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sun Jan 30 05:10:49 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Mmus_Astrocytes-C_PAP_trap2 --single -l 200 -s 30 -t 6 /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_Astrocytes-C_PAP_trap2_filtered.fastq.gz"
+}

@@ -1,0 +1,13 @@
+{
+	"n_targets": 783716,
+	"n_bootstraps": 0,
+	"n_processed": 14095383,
+	"n_pseudoaligned": 11860427,
+	"n_unique": 5741774,
+	"p_pseudoaligned": 84.1,
+	"p_unique": 40.7,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sat Jan 29 15:50:55 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Mmus_Astrocytes-A_protrusion_trap3 --single -l 200 -s 30 -t 6 /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_Astrocytes-A_protrusion_trap3_filtered.fastq.gz"
+}

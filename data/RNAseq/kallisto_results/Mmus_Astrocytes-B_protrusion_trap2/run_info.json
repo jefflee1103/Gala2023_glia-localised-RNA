@@ -1,0 +1,13 @@
+{
+	"n_targets": 783716,
+	"n_bootstraps": 0,
+	"n_processed": 78654922,
+	"n_pseudoaligned": 66638924,
+	"n_unique": 6215274,
+	"p_pseudoaligned": 84.7,
+	"p_unique": 7.9,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sat Jan 29 19:26:38 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Mmus_Astrocytes-B_translatome_Endfeet2 --single -l 200 -s 30 -t 6 /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_Astrocytes-B_translatome_Endfeet2_filtered.fastq.gz"
+}

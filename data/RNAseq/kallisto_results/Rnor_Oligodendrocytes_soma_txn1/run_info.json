@@ -1,0 +1,13 @@
+{
+	"n_targets": 286255,
+	"n_bootstraps": 0,
+	"n_processed": 40003645,
+	"n_pseudoaligned": 34157505,
+	"n_unique": 23007172,
+	"p_pseudoaligned": 85.4,
+	"p_unique": 57.5,
+	"kallisto_version": "0.44.0",
+	"index_version": 10,
+	"start_time": "Sat Jan 29 14:47:33 2022",
+	"call": "kallisto quant -i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Rnor_ensembl98_cdna_intron -o /mnt/d/Jeff_Davis-lab/kallisto_results/Rnor_Oligodendrocytes_soma_txn1 -t 4 /mnt/share/Data/Sequencing/DSG_review/filtered/Rnor_Oligodendrocytes_soma_txn1_read1_filtered.fastq.gz /mnt/share/Data/Sequencing/DSG_review/filtered/Rnor_Oligodendrocytes_soma_txn1_read2_filtered.fastq.gz"
+}

@@ -1,0 +1,1375 @@
+---
+title: "RNAseq_analysis"
+author: "Jeff Lee"
+date: "16/12/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# INTRODUCTION 
+
+R Markdown document to re-analyse RNA-seq from glial end-processes. 
+Raw data handling and kallisto mappings are performed in @mprocessor1 while DESeq2 is run locally. 
+
+# RNA SEQUENCING PROCESSING
+
+## Raw Data Handling
+
+### Download fastq data from SRA
+
+Fastq curl links are obtained from https://sra-explorer.info
+
+```{bash}
+## @mprocessor1
+## project dir = /usr/people/sjoh4548/Data/Sequencing
+
+mkdir -p DSG_review/Rawfastq
+
+## Get curl links
+cd DSG_review/Rawfastq
+
+## * * * * * Naming convention
+## species_celltype_compartment_txn/trap + repeat number_(read number if PE).fastq.gz
+## e.g. Rnor_Oligodendrocytes_soma_txn1_read1.fastq.gz
+
+### Azevedo 2018 (Rnor) - the only PE sequenced data 
+# physical separation of OPC soma and membrane protrusions
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/009/SRR6288019/SRR6288019_1.fastq.gz -o Rnor_Oligodendrocytes_soma_txn1_read1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/009/SRR6288019/SRR6288019_2.fastq.gz -o Rnor_Oligodendrocytes_soma_txn1_read2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/000/SRR6288020/SRR6288020_1.fastq.gz -o Rnor_Oligodendrocytes_soma_txn2_read1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/000/SRR6288020/SRR6288020_2.fastq.gz -o Rnor_Oligodendrocytes_soma_txn2_read2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/002/SRR6288022/SRR6288022_1.fastq.gz -o Rnor_Oligodendrocytes_protrusion_txn2_read1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/002/SRR6288022/SRR6288022_2.fastq.gz -o Rnor_Oligodendrocytes_protrusion_txn2_read2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/001/SRR6288021/SRR6288021_1.fastq.gz -o Rnor_Oligodendrocytes_protrusion_txn1_read1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR628/001/SRR6288021/SRR6288021_2.fastq.gz -o Rnor_Oligodendrocytes_protrusion_txn1_read2.fastq.gz
+
+### Sakers 2017 (Mmus)
+# Cortex transcript, cortex trap, SN transcript, SN trap
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/009/SRR2862549/SRR2862549.fastq.gz -o Mmus_Astrocytes-A_wholecell_trap1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/006/SRR2862546/SRR2862546.fastq.gz -o Mmus_Astrocytes-A_wholecell_txn1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/001/SRR2862551/SRR2862551.fastq.gz -o Mmus_Astrocytes-A_wholecell_trap3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/000/SRR2862550/SRR2862550.fastq.gz -o Mmus_Astrocytes-A_wholecell_trap2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/007/SRR2862547/SRR2862547.fastq.gz -o Mmus_Astrocytes-A_wholecell_txn2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/008/SRR2862548/SRR2862548.fastq.gz -o Mmus_Astrocytes-A_wholecell_txn3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/002/SRR2862552/SRR2862552.fastq.gz -o Mmus_Astrocytes-A_protrusion_txn1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/003/SRR2862553/SRR2862553.fastq.gz -o Mmus_Astrocytes-A_protrusion_txn2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/004/SRR2862554/SRR2862554.fastq.gz -o Mmus_Astrocytes-A_protrusion_txn3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/005/SRR2862555/SRR2862555.fastq.gz -o Mmus_Astrocytes-A_protrusion_trap1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/006/SRR2862556/SRR2862556.fastq.gz -o Mmus_Astrocytes-A_protrusion_trap2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR286/007/SRR2862557/SRR2862557.fastq.gz -o Mmus_Astrocytes-A_protrusion_trap3.fastq.gz
+
+### Boulay 2017 (Mmus)
+
+#### Translatome
+# translatome of whole astrocytes extracted following the bacTRAP protocol was compared to a translatome of astrocyte perivascular endfeet
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/009/SRR2352159/SRR2352159.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/006/SRR2352156/SRR2352156.fastq.gz -o Mmus_Astrocytes-B_translatome_wholecell2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/007/SRR2352157/SRR2352157.fastq.gz -o Mmus_Astrocytes-B_translatome_wholecell3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/005/SRR2352155/SRR2352155.fastq.gz -o Mmus_Astrocytes-B_translatome_wholecell1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/008/SRR2352158/SRR2352158.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/000/SRR2352160/SRR2352160.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/002/SRR2352162/SRR2352162.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/001/SRR2352161/SRR2352161.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR235/003/SRR2352163/SRR2352163.fastq.gz -o Mmus_Astrocytes-B_translatome_Endfeet6.fastq.gz
+
+
+### Castro 2020 (Mmus)
+# They analyse FACS sortes transcriptomes of 3 cell types, and Perisynaptic Schwann Cells are double labelled with S100β-GFP+;NG2-dsRed+ 
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/023/SRR12045623/SRR12045623.fastq.gz -o Mmus_PCSc_1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/021/SRR12045621/SRR12045621.fastq.gz -o Mmus_PCSc_2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/027/SRR12045627/SRR12045627.fastq.gz -o Mmus_PCSc_3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/029/SRR12045629/SRR12045629.fastq.gz -o Mmus_PCSc_4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/035/SRR12045635/SRR12045635.fastq.gz -o Mmus_PCSc_5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/037/SRR12045637/SRR12045637.fastq.gz -o Mmus_PCSc_6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/042/SRR12045642/SRR12045642.fastq.gz -o Mmus_PCSc_7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/040/SRR12045640/SRR12045640.fastq.gz -o Mmus_PCSc_8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/048/SRR12045648/SRR12045648.fastq.gz -o Mmus_PCSc_9.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/050/SRR12045650/SRR12045650.fastq.gz -o Mmus_PCSc_10.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/055/SRR12045655/SRR12045655.fastq.gz -o Mmus_PCSc_11.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR120/053/SRR12045653/SRR12045653.fastq.gz -o Mmus_PCSc_12.fastq.gz
+
+### Mazare 2020 (Mmus)
+# This is TRAP ONLY: RNA-seq raw data of ribosome-bound mRNAs extracted from whole astrocytes and PAPs by purifying GFP ribosomes and sequencing RNAs attached to them
+# Experiment was done 3 times, each time with multiple technical replicates
+# Perisynaptic Astrocytic Processes (PAPs) versus full astrocytes polysomal transcriptome from dorsal hippocampus in Aldh1l1:L10a-eGFP mice
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/094/SRR10877094/SRR10877094.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/090/SRR10877090/SRR10877090.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/089/SRR10877089/SRR10877089.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/091/SRR10877091/SRR10877091.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/092/SRR10877092/SRR10877092.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/093/SRR10877093/SRR10877093.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/095/SRR10877095/SRR10877095.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/097/SRR10877097/SRR10877097.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/096/SRR10877096/SRR10877096.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap1_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/098/SRR10877098/SRR10877098.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/099/SRR10877099/SRR10877099.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/000/SRR10877100/SRR10877100.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/004/SRR10877104/SRR10877104.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/002/SRR10877102/SRR10877102.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/003/SRR10877103/SRR10877103.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/001/SRR10877101/SRR10877101.fastq.gz -o Mmus_Astrocytes-C_PAP_trap1_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/005/SRR10877105/SRR10877105.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/006/SRR10877106/SRR10877106.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/011/SRR10877111/SRR10877111.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/010/SRR10877110/SRR10877110.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/007/SRR10877107/SRR10877107.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/008/SRR10877108/SRR10877108.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/009/SRR10877109/SRR10877109.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/012/SRR10877112/SRR10877112.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap2_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/015/SRR10877115/SRR10877115.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/014/SRR10877114/SRR10877114.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/013/SRR10877113/SRR10877113.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/016/SRR10877116/SRR10877116.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/017/SRR10877117/SRR10877117.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/018/SRR10877118/SRR10877118.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/019/SRR10877119/SRR10877119.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/021/SRR10877121/SRR10877121.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/022/SRR10877122/SRR10877122.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/020/SRR10877120/SRR10877120.fastq.gz -o Mmus_Astrocytes-C_PAP_trap2_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/023/SRR10877123/SRR10877123.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/024/SRR10877124/SRR10877124.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/026/SRR10877126/SRR10877126.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/025/SRR10877125/SRR10877125.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/027/SRR10877127/SRR10877127.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech7.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/029/SRR10877129/SRR10877129.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/028/SRR10877128/SRR10877128.fastq.gz -o Mmus_Astrocytes-C_wholecell_trap3_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/030/SRR10877130/SRR10877130.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/032/SRR10877132/SRR10877132.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech4.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/034/SRR10877134/SRR10877134.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech6.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/031/SRR10877131/SRR10877131.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/036/SRR10877136/SRR10877136.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech8.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/033/SRR10877133/SRR10877133.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech5.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR108/035/SRR10877135/SRR10877135.fastq.gz -o Mmus_Astrocytes-C_PAP_trap3_tech7.fastq.gz
+
+### Thakurela 2016 (Mmus)
+# This is myelin microdissection at various stages of mouse development
+# Idk if we should compare all or choose oldest/6 or 24mo
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/006/SRR3181086/SRR3181086.fastq.gz -o Mmus_Myelin_P75_R2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/003/SRR3181083/SRR3181083.fastq.gz -o Mmus_Myelin_P18_R2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/007/SRR3181087/SRR3181087.fastq.gz -o Mmus_Myelin_P75_R3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/002/SRR3181082/SRR3181082.fastq.gz -o Mmus_Myelin_P18_R1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/005/SRR3181085/SRR3181085.fastq.gz -o Mmus_Myelin_P75_R1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/004/SRR3181084/SRR3181084.fastq.gz -o Mmus_Myelin_P18_R3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/008/SRR3181088/SRR3181088.fastq.gz -o Mmus_Myelin_6mo_R1.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/000/SRR3181090/SRR3181090.fastq.gz -o Mmus_Myelin_6mo_R3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/009/SRR3181089/SRR3181089.fastq.gz -o Mmus_Myelin_6mo_R2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/003/SRR3181093/SRR3181093.fastq.gz -o Mmus_Myelin_24mo_R3.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/002/SRR3181092/SRR3181092.fastq.gz -o Mmus_Myelin_24mo_R2.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR318/001/SRR3181091/SRR3181091.fastq.gz -o Mmus_Myelin_24mo_R1.fastq.gz
+
+### Vasek 2021 (Mmus)
+
+
+
+
+cd ../..
+
+```
+
+### Run fastQC (optional)
+
+```{bash}
+mkdir -p DSG_review/Rawfastq/FastQC
+
+# Run fastqc
+for file in DSG_review/Rawfastq/*.fastq.gz
+do
+echo "Processing file $file"
+fastqc $file -o DSG_review/Rawfastq/FastQC
+echo ""
+done 
+
+# Run multiqc
+mkdir -p DSG_review/Rawfastq/multiqc
+
+multiqc -f \
+DSG_review/Rawfastq/FastQC/*_fastqc.zip \
+-o DSG_review/Rawfastq/multiqc \
+-n MultiQC_FastQC_Sequencing-runs_raw_report
+
+```
+
+## Remove Adapters
+
+* Illumina Tru-seq AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+* NuGen SPIA CTTTGTGTTTGA
+
+```{bash}
+mkdir -p DSG_review/trimmed
+
+## Mouse
+for file in DSG_review/Rawfastq/Mmus_*.fastq.gz
+do
+echo "Processing file $file"
+base=$(basename "$file") 
+outfile="$(echo ${base} |sed -e 's/.fastq.gz/_trimmed.fastq.gz/')" 
+cutadapt \
+-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+-a CTTTGTGTTTGA \
+--times 2 \
+--cores=4 \
+-m 30 \
+--trim-n \
+--report=minimal \
+-o DSG_review/trimmed/$outfile \
+$file
+echo ""
+done
+
+## Rat
+for file in DSG_review/Rawfastq/Rnor_*_read1.fastq.gz
+do
+echo "Processing file $file"
+base=$(basename "$file") 
+
+infile1=$file
+infile2="$(echo ${file} |sed -e 's/read1/read2/')" 
+outfile1="$(echo ${base} |sed -e 's/_read1.fastq.gz/_read1_trimmed.fastq.gz/')" 
+outfile2="$(echo ${outfile1} |sed -e 's/read1/read2/')" 
+
+cutadapt \
+-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA \
+-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT \
+--times 2 \
+--cores=4 \
+-m 30 \
+--trim-n \
+--report=minimal \
+-o DSG_review/trimmed/$outfile1 \
+-p DSG_review/trimmed/$outfile2 \
+$infile1 $infile2
+echo ""
+done
+
+```
+
+### Combine technical replicates of Mazare 2020
+
+```{bash}
+cd DSG_review/trimmed
+
+## Concatenate
+cat Mmus_Astrocytes-C_wholecell_trap1_*_trimmed.fastq.gz > Mmus_Astrocytes-C_wholecell_trap1_trimmed.fastq.gz
+cat Mmus_Astrocytes-C_wholecell_trap2_*_trimmed.fastq.gz > Mmus_Astrocytes-C_wholecell_trap2_trimmed.fastq.gz
+cat Mmus_Astrocytes-C_wholecell_trap3_*_trimmed.fastq.gz > Mmus_Astrocytes-C_wholecell_trap3_trimmed.fastq.gz
+cat Mmus_Astrocytes-C_PAP_trap1_*_trimmed.fastq.gz > Mmus_Astrocytes-C_PAP_trap1_trimmed.fastq.gz
+cat Mmus_Astrocytes-C_PAP_trap2_*_trimmed.fastq.gz > Mmus_Astrocytes-C_PAP_trap2_trimmed.fastq.gz
+cat Mmus_Astrocytes-C_PAP_trap3_*_trimmed.fastq.gz > Mmus_Astrocytes-C_PAP_trap3_trimmed.fastq.gz
+
+## Remove technical libraries 
+rm Mmus_Astrocytes-C_wholecell_trap1_*_trimmed.fastq.gz
+rm Mmus_Astrocytes-C_wholecell_trap2_*_trimmed.fastq.gz
+rm Mmus_Astrocytes-C_wholecell_trap3_*_trimmed.fastq.gz
+rm Mmus_Astrocytes-C_PAP_trap1_*_trimmed.fastq.gz
+rm Mmus_Astrocytes-C_PAP_trap2_*_trimmed.fastq.gz
+rm Mmus_Astrocytes-C_PAP_trap3_*_trimmed.fastq.gz
+
+cd ../..
+
+```
+
+
+## Filter Contaminant Reads
+
+* Ribosomal RNA
+* Mitochondrial ribosomal RNA
+* PolyA/C ...
+* PhiX
+
+```{bash}
+mkdir -p DSG_review/filtered
+
+## Mouse libraries - SE sequences libraries only
+for file in DSG_review/trimmed/Mmus_*_trimmed.fastq.gz
+do
+echo "Processing file $file"
+base=$(basename "$file") 
+outfile="$(echo ${base} |sed -e 's/_trimmed.fastq.gz/_filtered.fastq.gz/')" 
+outstat="$(echo ${base} |sed -e 's/_trimmed.fastq.gz/_filtered.stat.txt/')" 
+bbduk.sh in=$file \
+out=DSG_review/filtered/$outfile \
+ref=GENOMEDIR/contaminants/Mmus_rRNA_NCBI.fasta,GENOMEDIR/contaminants/polyA_polyC.fasta,GENOMEDIR/contaminants/phix174_ill.ref.fa.gz \
+k=27 \
+hdist=1 \
+-Xmx32g \
+stats=DSG_review/filtered/$outstat
+echo ""
+done
+
+## Rat libraries - PE sequenced libraries only
+for file in DSG_review/trimmed/Rnor_*_read1_trimmed.fastq.gz
+do
+echo "Processing file $file"
+base=$(basename "$file") 
+
+infile1=$file
+infile2="$(echo ${file} |sed -e 's/read1/read2/')"
+outfile1="$(echo ${base} |sed -e 's/_read1_trimmed.fastq.gz/_read1_filtered.fastq.gz/')" 
+outfile2="$(echo ${base} |sed -e 's/_read1_trimmed.fastq.gz/_read2_filtered.fastq.gz/')" 
+outstat="$(echo ${base} |sed -e 's/_read1_trimmed.fastq.gz/_filtered.stat.txt/')" 
+
+bbduk.sh \
+in1=$infile1 \
+in2=$infile2 \
+out1=DSG_review/filtered/$outfile1 \
+out2=DSG_review/filtered/$outfile2 \
+ref=GENOMEDIR/contaminants/Rnor_rRNA_NCBI.fasta,GENOMEDIR/contaminants/polyA_polyC.fasta,GENOMEDIR/contaminants/phix174_ill.ref.fa.gz \
+k=27 \
+hdist=1 \
+-Xmx32g \
+stats=DSG_review/filtered/$outstat
+
+echo ""
+done
+
+```
+
+## Mapping With Kallisto
+
+### Download genomes and annotations
+
+* ENSEMBL mouse 96
+* ENSEMBL rat 98
+
+```{bash}
+## Mouse 
+mkdir -p GENOMEDIR/Mmus
+cd GENOMEDIR/Mmus
+wget http://ftp.ensembl.org/pub/release-96/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.toplevel.fa.gz 
+wget http://ftp.ensembl.org/pub/release-96/gtf/mus_musculus/Mus_musculus.GRCm38.96.gtf.gz
+cd .. 
+
+## Rat
+mkdir -p GENOMEDIR/Rnor
+cd GENOMEDIR/Rnor
+wget http://ftp.ensembl.org/pub/release-98/fasta/rattus_norvegicus/dna/Rattus_norvegicus.Rnor_6.0.dna.toplevel.fa.gz
+wget http://ftp.ensembl.org/pub/release-98/gtf/rattus_norvegicus/Rattus_norvegicus.Rnor_6.0.98.gtf.gz
+cd .. 
+
+```
+
+
+### Create kallisto index with introns
+
+```{bash}
+## Mouse
+mkdir -p GENOMEDIR/Mmus/kallisto
+
+kb ref -i GENOMEDIR/Mmus/kallisto/kallisto_index_Mmus_ensembl96_cdna_intron \
+-g GENOMEDIR/Mmus/kallisto/kb_output_t2g.txt \
+-f1 GENOMEDIR/Mmus/kallisto/kb_output_cdna.fa \
+-f2 GENOMEDIR/Mmus/kallisto/kb_output_intron.fa \
+-c1 GENOMEDIR/Mmus/kallisto/kb_output_cdna_t2c.txt \
+-c2 GENOMEDIR/Mmus/kallisto/kb_output_intron_t2c.txt \
+--workflow lamanno \
+GENOMEDIR/Mmus/Mus_musculus.GRCm38.dna.toplevel.fa.gz \
+GENOMEDIR/Mmus/Mus_musculus.GRCm38.96.gtf.gz
+
+## Rat
+mkdir -p GENOMEDIR/Rnor/kallisto
+
+kb ref -i GENOMEDIR/Rnor/kallisto/kallisto_index_Rnor_ensembl98_cdna_intron \
+-g GENOMEDIR/Rnor/kallisto/kb_output_t2g.txt \
+-f1 GENOMEDIR/Rnor/kallisto/kb_output_cdna.fa \
+-f2 GENOMEDIR/Rnor/kallisto/kb_output_intron.fa \
+-c1 GENOMEDIR/Rnor/kallisto/kb_output_cdna_t2c.txt \
+-c2 GENOMEDIR/Rnor/kallisto/kb_output_intron_t2c.txt \
+--workflow lamanno \
+GENOMEDIR/Rnor/Rattus_norvegicus.Rnor_6.0.dna.toplevel.fa.gz \
+GENOMEDIR/Rnor/Rattus_norvegicus.Rnor_6.0.98.gtf.gz
+
+
+```
+
+### Pseudoalign to transcriptome
+Running on mprocessor1
+
+```{bash}
+mkdir -p DSG_review/kallisto_results
+
+## Mouse libraries - SE sequenced only
+for file in DSG_review/filtered/Mmus_*_filtered.fastq.gz 
+do 
+echo "Processing file $file" 
+base=$(basename "$file") 
+outfolder="$(echo ${base} |sed -e 's/_filtered.fastq.gz//')" 
+mkdir -p DSG_review/kallisto_results/$outfolder
+
+kallisto quant \
+-i GENOMEDIR/Mmus/kallisto/kallisto_index_Mmus_ensembl96_cdna_intron \
+-o DSG_review/kallisto_results/$outfolder \
+--single \
+-l 200 \
+-s 30 \
+-t 4 \
+$file 
+echo ""
+done
+
+## Rat libraries - PE sequenced only
+for file in DSG_review/filtered/Rnor_*_read1_filtered.fastq.gz 
+do 
+echo "Processing file $file" 
+base=$(basename "$file") 
+outfolder="$(echo ${base} |sed -e 's/_read1_filtered.fastq.gz//')" 
+mkdir -p DSG_review/kallisto_results/$outfolder
+
+infile1=$file
+infile2="$(echo ${file} |sed -e 's/read1/read2/')"
+
+kallisto quant \
+-i GENOMEDIR/Rnor/kallisto/kallisto_index_Rnor_ensembl98_cdna_intron \
+-o DSG_review/kallisto_results/$outfolder \
+-t 4 \
+$infile1 $infile2
+echo ""
+done
+
+
+```
+
+### Pseudoalign to transcriptome
+Running on alien computer
+
+```{bash}
+mkdir -p /mnt/d/Jeff_Davis-lab/kallisto_results
+
+## Mouse libraries - SE sequenced only
+for file in /mnt/share/Data/Sequencing/DSG_review/filtered/Mmus_*_filtered.fastq.gz 
+do 
+echo "Processing file $file" 
+base=$(basename "$file") 
+outfolder="$(echo ${base} |sed -e 's/_filtered.fastq.gz//')" 
+mkdir -p /mnt/d/Jeff_Davis-lab/kallisto_results/$outfolder
+
+kallisto quant \
+-i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Mmus_ensembl96_cdna_intron \
+-o /mnt/d/Jeff_Davis-lab/kallisto_results/$outfolder \
+--single \
+-l 200 \
+-s 30 \
+-t 6 \
+$file 
+echo ""
+done
+
+## Rat libraries - PE sequenced only
+for file in /mnt/share/Data/Sequencing/DSG_review/filtered/Rnor_*_read1_filtered.fastq.gz 
+do 
+echo "Processing file $file" 
+base=$(basename "$file") 
+outfolder="$(echo ${base} |sed -e 's/_read1_filtered.fastq.gz//')" 
+mkdir -p /mnt/d/Jeff_Davis-lab/kallisto_results/$outfolder
+
+infile1=$file
+infile2="$(echo ${file} |sed -e 's/read1/read2/')"
+
+kallisto quant \
+-i /mnt/d/Jeff_Davis-lab/GENOMEDIR/kallisto_index_Rnor_ensembl98_cdna_intron \
+-o /mnt/d/Jeff_Davis-lab/kallisto_results/$outfolder \
+-t 6 \
+$infile1 $infile2
+echo ""
+done
+```
+
+
+\newpage
+
+
+# PREPROCESSING AND CLEANUP
+
+## Preprocess And Obtain A TPM Table
+
+### Import Kallisto results usign tximport 
+
+```{r}
+library(tidyverse)
+library(tximport)
+library(rhdf5)
+
+# * * * * * Mouse
+
+## Get sample metadata
+sample_id <- dir("./RNAseq/kallisto_results") %>% str_subset("Mmus")
+kal_dirs <- file.path("./RNAseq/kallisto_results", sample_id)
+
+files <- file.path(kal_dirs, "abundance.h5")
+names(files) <- sample_id # names for the matrices
+all(file.exists(files))
+
+## Get tx2gene table 
+tx2gene <- read_tsv("./RNAseq/Mmus_kb_output_t2g.txt", col_names = FALSE)
+colnames(tx2gene) <- c("tx_id", "gene_id", "gene_name", "gene_name_version", "chr", "start", "end", "strand")
+t2g <- tx2gene %>%
+  dplyr::select(tx_id, gene_id)
+
+## Import with kallisto
+gni_kallisto <- tximport(files,
+                         type = "kallisto",
+                         tx2gene = t2g)
+
+head(gni_kallisto$abundance)
+head(gni_kallisto$length)
+
+saveRDS(gni_kallisto, "./RNAseq/quant_results/Mmus_kallisto_tximport_gni.RDS")
+
+# * * * * * Rat
+
+## Get sample metadata
+sample_id <- dir("./RNAseq/kallisto_results") %>% str_subset("Rnor")
+kal_dirs <- file.path("./RNAseq/kallisto_results", sample_id)
+
+files <- file.path(kal_dirs, "abundance.h5")
+names(files) <- sample_id # names for the matrices
+all(file.exists(files))
+
+## Get tx2gene table 
+tx2gene <- read_tsv("./RNAseq/Rnor_kb_output_t2g.txt", col_names = FALSE)
+colnames(tx2gene) <- c("tx_id", "gene_id", "gene_name", "gene_name_version", "chr", "start", "end", "strand")
+t2g <- tx2gene %>%
+  dplyr::select(tx_id, gene_id)
+
+## Import with kallisto
+gni_kallisto <- tximport(files,
+                         type = "kallisto",
+                         tx2gene = t2g)
+
+head(gni_kallisto$abundance)
+head(gni_kallisto$length)
+
+saveRDS(gni_kallisto, "./RNAseq/quant_results/Rnor_kallisto_tximport_gni.RDS")
+
+```
+
+### Get TPM dataframe for kallisto output
+
+```{r}
+# * * * * * Mouse
+
+gni_kallisto <- readRDS("./RNAseq/quant_results/Mmus_kallisto_tximport_gni.RDS")
+
+## Get a TPM dataframe
+Mmus_kallisto_TPM <- gni_kallisto$abundance %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  pivot_longer(cols = starts_with("Mmus"),
+               names_to = "library_id",
+               values_to = "TPM") %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", "")) %>%
+  mutate(library_group = str_remove(library_id, "Mmus_") %>% 
+           str_remove(., "[[:digit:]]+$")) %>%
+  mutate(species = "Mmus")
+
+saveRDS(Mmus_kallisto_TPM, "./RNAseq/quant_results/Mmus_kallisto_TPM_tidy.RDS")
+
+## Create average TPM dataframe in a wide format
+Mmus_kallisto_avgTPM_wide <- Mmus_kallisto_TPM %>%
+  group_by(gene_id, species, library_group) %>%
+  summarise(average_TPM = mean(TPM)) %>%
+  pivot_wider(id_cols = gene_id,
+              values_from = average_TPM,
+              names_from = library_group)
+
+saveRDS(Mmus_kallisto_avgTPM_wide, "./RNAseq/quant_results/Mmus_kallisto_avgTPM_wide.RDS")
+
+
+# * * * * * Rat
+
+gni_kallisto <- readRDS("./RNAseq/quant_results/Rnor_kallisto_tximport_gni.RDS")
+
+## Get a TPM dataframe
+Rnor_kallisto_TPM <- gni_kallisto$abundance %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  pivot_longer(cols = starts_with("Rnor"),
+               names_to = "library_id",
+               values_to = "TPM") %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", "")) %>%
+  mutate(library_group = str_remove(library_id, "Rnor_") %>% 
+           str_sub(1, nchar(.)-1)) %>%
+  mutate(species = "Rnor")
+
+saveRDS(Rnor_kallisto_TPM, "./RNAseq/quant_results/Rnor_kallisto_TPM_tidy.RDS")
+
+## Create average TPM dataframe in a wide format
+Rnor_kallisto_avgTPM_wide <- Rnor_kallisto_TPM %>%
+  group_by(gene_id, species, library_group) %>%
+  summarise(average_TPM = mean(TPM)) %>%
+  pivot_wider(id_cols = gene_id,
+              values_from = average_TPM,
+              names_from = library_group)
+
+saveRDS(Rnor_kallisto_avgTPM_wide, "./RNAseq/quant_results/Rnor_kallisto_avgTPM_wide.RDS")
+
+
+```
+
+## Handing Datasets Whose Raw Fastq Are Unavailable 
+
+### Vasek 2021 data
+
+Raw fastq dataset from Vasek 2021 is currently unavailable in GEO (Feb 2022). Instead, the authors provided raw HTSeq counts data analysed with Mmus Ensembl93 annotation. 
+
+```{r}
+library(tidyverse)
+library(tximport)
+library(rhdf5)
+
+# * * * * *  Get counts datatable compatible with Ensembl96
+
+## Read in raw HTSeq counts data
+vasek_rawcount_files <- list.files("./RNAseq/Rawdata_unavailable/Vasek2021/GSE161460_Vasek2021_Raw", 
+                                   pattern = ".txt.gz", full.names = TRUE) 
+vasek_rawcounts <- map(vasek_rawcount_files, function(x){
+  name <- basename(x) %>% str_remove(".txt.gz")
+  read_tsv(x, col_names = FALSE) %>%
+    dplyr::select("gene_id" = X1, !!name := X2)
+}) %>%
+  purrr::reduce(full_join, by = "gene_id") %>%
+  filter(str_detect(gene_id, "ENSM"))
+
+## How many genes from Mmus Ensembl93 are incompatible with Ensembl96?
+tx2gene <- read_tsv("./RNAseq/Mmus_kb_output_t2g.txt", col_names = FALSE)
+colnames(tx2gene) <- c("tx_id", "gene_id", "gene_name", "gene_name_version", "chr", "start", "end", "strand")
+
+ens96_point_removed <- tx2gene %>% 
+  dplyr::select(gene_id) %>%
+  distinct() %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", ""))
+
+vasek_ens96_incompatible <- vasek_rawcounts %>%
+  mutate(is_ens96_compatible = if_else(gene_id %in% ens96_point_removed$gene_id, TRUE, FALSE)) %>%
+  filter(is_ens96_compatible == FALSE)
+
+vasek_ens96_incompatible %>% nrow() ## most of these are totally deprecated or are pseudogenes with none-low counts - going to remove them from analysis 
+
+## Save counts table and filter out non-specific txn counts
+vasek_rawcounts %>%
+  filter(!(gene_id %in% vasek_ens96_incompatible$gene_id)) %>%
+  saveRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Vasek2021_counts_dataframe.RDS")
+
+## Change library names and save counts dataframe 
+aliases <- read_csv("./RNAseq/Rawdata_unavailable/Vasek2021/filename_alias.csv") %>%
+  mutate(original_alias = str_remove(original_alias, ".txt.gz")) 
+
+vasek_rawcounts %>%
+  pivot_longer(cols = contains("htseq"),
+               names_to = "library",
+               values_to = "counts") %>%
+  left_join(aliases, by = c("library" = "original_alias")) %>%
+  dplyr::select(-library) %>%
+  pivot_wider(id_cols = "gene_id",
+              names_from = "converted_alias",
+              values_from = "counts") %>%
+  saveRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Vasek2021_counts_dataframe_names_converted.RDS")
+
+# * * * * * Convert counts table to TPM table
+
+## Conversion via Mike Love's method: https://support.bioconductor.org/p/91218/
+counts_to_tpm <- function(counts,len) {
+  x <- counts/len
+  return(t(t(x)*1e6/colSums(x)))
+}
+
+## Get counts matrix
+counts <- vasek_rawcounts %>%
+  column_to_rownames(var = "gene_id") %>%
+  as.matrix()
+
+## Get effective gene length matrix from one of the kallisto output
+efflen <- readRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Mmus_ensembl96_efflen.RDS") %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  dplyr::rename("effective_length" = 2) %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", ""))
+
+len <- vasek_rawcounts %>%
+  left_join(efflen, by = "gene_id") %>%
+  dplyr::select(gene_id, effective_length) %>%
+  column_to_rownames(var = "gene_id") %>%
+  as.matrix() %>%
+  .[, rep(1, ncol(counts))]
+
+## Filter those with effective length > 1
+keep <- !is.na(len[, 1]) 
+keep <- as.vector(keep)
+unique(keep)
+
+counts <- counts[keep,]
+len <- len[keep,]
+
+## Convert then save raw tpm matrix
+vasek_tpm <- counts_to_tpm(counts, len)
+
+vasek_tpm %>% saveRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Vasek2021_TPM_matrix.RDS")
+
+## Change library names to human-readable aliases then save the tidy tpm dataframe
+aliases <- read_csv("./RNAseq/Rawdata_unavailable/Vasek2021/filename_alias.csv") %>%
+  mutate(original_alias = str_remove(original_alias, ".txt.gz"))
+
+vasek_tpm_tidy <- vasek_tpm %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  pivot_longer(cols = contains("GSM"),
+               values_to = "TPM",
+               names_to = "original_alias") %>%
+  left_join(aliases) %>%
+  dplyr::rename("library_id" = converted_alias) %>%
+  mutate(library_group = str_sub(library_id, 1, nchar(library_id)-1)) %>%
+  filter(!str_detect(library_group, "control"))
+
+saveRDS(vasek_tpm_tidy, "./RNAseq/Rawdata_unavailable/Vasek2021/Vasek_TPM_tidy.RDS")
+
+## Save vasek avg tpm df
+vasek_avgTPM_wide <- vasek_tpm_tidy%>%
+  group_by(gene_id, library_group) %>%
+  summarise(average_TPM = mean(TPM)) %>%
+  pivot_wider(id_cols = gene_id,
+              values_from = average_TPM,
+              names_from = library_group)
+
+saveRDS(vasek_avgTPM_wide, "./RNAseq/Rawdata_unavailable/Vasek2021/Vasek_avgTPM_wide.RDS")
+
+
+```
+
+### Thomsen 2013 data
+
+RNA purified from perisynaptic astrocytic processes were sequenced via Helicos direct RNA-sequencing platform. Raw data are unavailable but mean TPM table are supplied in Supplemental table 3. Primary astrocytes (Astrocytes-D) and astrocytic C8-S (Astrocytes-E) cells.
+
+```{r}
+library(tidyverse)
+
+# * * * * * Import and cleanup raw tpm data from Thomsen 2013
+
+## Read in data and full join into single df
+AD <- read_csv("./RNAseq/Rawdata_unavailable/Thomsen2013/Primary_astrocytes_avgTPM.csv")
+AE <- read_csv("./RNAseq/Rawdata_unavailable/Thomsen2013/C8-S_cells_avgTPM.csv")
+
+Thomsen_raw <- full_join(AD, AE, by = c("Refseq no", "Gene name")) %>%
+  mutate(across(everything(), ~replace_na(.x, 0)))
+
+## Convert NM refseq id into ensembl id (via gene name)
+
+### Get ensembl 96 annotation and remove unnecessary dots in gene_id column
+tx2gene <- read_tsv("./RNAseq/Mmus_kb_output_t2g.txt", col_names = FALSE)
+colnames(tx2gene) <- c("tx_id", "gene_id", "gene_name", "gene_name_version", "chr", "start", "end", "strand")
+ens96 <- tx2gene %>% 
+  dplyr::select(gene_id, gene_name) %>%
+  distinct() %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", ""))
+
+### How many Gene names can be mapped via ens96? --> Not a good idea (too many NAs)
+left_join(Thomsen_raw, ens96, by = c("Gene name" = "gene_name")) %>%
+  pull(gene_id) %>% is.na() %>% sum()
+
+### Use biomaRt for conversion
+library(biomaRt)
+
+listEnsemblArchives()
+mouse_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", 
+                   host = "https://apr2019.archive.ensembl.org")
+listAttributes(mouse_mart96)
+id_dictionary <- getBM(attributes = c("ensembl_gene_id", "refseq_mrna", "refseq_ncrna"),
+      mart = mouse_mart96,
+      filters = "ensembl_gene_id",
+      values = ens96$gene_id)
+id_dictionary_refseq <- bind_rows(
+  (id_dictionary %>% 
+     dplyr::select(ensembl_gene_id, "refseq" = refseq_mrna) %>%
+     filter(str_detect(refseq, "NM"))),
+  (id_dictionary %>% 
+     dplyr::select(ensembl_gene_id, "refseq" = refseq_ncrna) %>%
+     filter(str_detect(refseq, "NR")))
+)
+
+initial_match <- left_join(Thomsen_raw, id_dictionary_refseq, by = c("Refseq no" = "refseq"))
+initial_match %>% pull(ensembl_gene_id) %>% is.na() %>% sum
+
+### Find rest of the gene matches using gprofiler web interface
+write_csv(initial_match %>% filter(is.na(ensembl_gene_id)), "~/Desktop/Thomsen_raw_no_match.csv")
+gprofiler_matches <- read_csv("~/Desktop/gProfiler_mmusculus_02-02-2022_20-53-15.csv")
+
+best_match <- bind_rows(
+  (initial_match %>%
+     filter(!is.na(ensembl_gene_id))), 
+  (initial_match %>%
+     filter(is.na(ensembl_gene_id)) %>%
+     dplyr::select(-ensembl_gene_id) %>%
+     mutate(`Gene name` = tolower(`Gene name`)) %>%
+     left_join((gprofiler_matches %>%
+                  dplyr::select(initial_alias, "ensembl_gene_id" = converted_alias) %>%
+                  mutate(initial_alias = tolower(initial_alias))), 
+                by = c("Gene name" = "initial_alias")))
+)
+
+Thomsen_cleaned <- best_match %>%
+  dplyr::select("gene_id" = ensembl_gene_id, contains("Astrocytes")) %>%
+  filter(gene_id != "None") %>%
+  group_by(gene_id) %>%
+  summarise_all(sum) %>% ungroup()
+
+saveRDS(Thomsen_cleaned, "./RNAseq/Rawdata_unavailable/Thomsen2013/Thomsen_avgTPM_ensembl-converted.RDS")
+
+
+```
+
+## Convert Rnor Genes to Mmus Genes
+
+### Azevedo 2018 data
+
+```{r}
+## Environment
+library(tidyverse)
+library(biomaRt)
+
+## Data 
+Rnor_kallisto_avgTPM_wide <- readRDS("./RNAseq/quant_results/Rnor_kallisto_avgTPM_wide.RDS")
+
+## Get conversion dataframe 
+listEnsemblArchives()
+rat_mart98 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "rnorvegicus_gene_ensembl", 
+                   host = "https://sep2019.archive.ensembl.org")
+listAttributes(rat_mart98) -> rat_mart98_attributes
+id_dictionary <- getBM(attributes = c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene", "mmusculus_homolog_orthology_type"),
+      mart = rat_mart98,
+      filters = "ensembl_gene_id",
+      values = Rnor_kallisto_avgTPM_wide$gene_id) %>%
+  dplyr::select(-mmusculus_homolog_orthology_type)
+
+## Convert - Take median TPM for multi-mappers 
+azevedo_Mmus_converted <- Rnor_kallisto_avgTPM_wide %>%
+  left_join(id_dictionary, by = c("gene_id" = "ensembl_gene_id")) %>% 
+  filter(str_detect(mmusculus_homolog_ensembl_gene, "ENS")) %>%
+  group_by(mmusculus_homolog_ensembl_gene) %>%
+  summarise(Oligodendrocytes_soma_txn = median(Oligodendrocytes_soma_txn),
+            Oligodendrocytes_protrusion_txn = median(Oligodendrocytes_protrusion_txn)) %>%
+  ungroup() %>%
+  dplyr::rename("gene_id" = mmusculus_homolog_ensembl_gene)
+
+saveRDS(azevedo_Mmus_converted, "./RNAseq/quant_results/Azevedo_Mmus_converted_avgTPM_wide.RDS")
+
+```
+
+
+
+## Combine TPM Dataframes
+
+```{r}
+## Combine Mmus data
+vasek_avgTPM_wide <- readRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Vasek_avgTPM_wide.RDS") %>%
+  dplyr::select(-contains("txn")) %>%
+  rename_with(function(x){
+    str_remove(x, "_induced")
+  })
+
+Thomsen_cleaned <- readRDS("./RNAseq/Rawdata_unavailable/Thomsen2013/Thomsen_avgTPM_ensembl-converted.RDS") %>%
+  rename_with(function(x){
+    str_c(x,"_txn", sep = "")
+  }) %>%
+  dplyr::rename("gene_id" = gene_id_txn)
+Mmus_kallisto_avgTPM_wide <- readRDS("./RNAseq/quant_results/Mmus_kallisto_avgTPM_wide.RDS")
+
+Mmus_avgTPM_wide <- left_join(Mmus_kallisto_avgTPM_wide, Thomsen_cleaned) %>%
+  left_join(vasek_avgTPM_wide) %>%
+  mutate(across(everything(), ~replace_na(.x, 0)))
+
+saveRDS(Mmus_avgTPM_wide, "./RNAseq/quant_results/Mmus_all-glia_avgTPM_wide.RDS")
+
+## Combine Mmus with Rnor-converted data 
+Mmus_avgTPM_wide <- readRDS("./RNAseq/quant_results/Mmus_all-glia_avgTPM_wide.RDS")
+azevedo_Mmus_converted <- readRDS("./RNAseq/quant_results/Azevedo_Mmus_converted_avgTPM_wide.RDS")
+
+avgTPM_wide <- left_join(Mmus_avgTPM_wide, azevedo_Mmus_converted) %>%
+  mutate(across(everything(), ~replace_na(.x, 0)))
+
+saveRDS(avgTPM_wide, "./RNAseq/quant_results/all-glia_avgTPM_wide.RDS")
+
+```
+
+
+\newpage
+
+
+# CREATE SUMMARY TABLE
+
+## Presence In Protrusion
+
+ - Transcriptome or tranlatome TPM > 10 (Transcriptome has priority) (Max 12 datasets)  
+ - Get Mean TPM --> transcriptome only (Max 9 datasets)  
+
+```{r}
+# Environment
+library(tidyverse)
+
+## 
+avgTPM_wide <- readRDS("./RNAseq/quant_results/all-glia_avgTPM_wide.RDS")
+
+##
+protrusion_RNA_libraries <- read.table(pipe("pbpaste"), header=FALSE) %>% pull(V1) # From googledrive
+
+avgTPM <- avgTPM_wide %>%
+  dplyr::select(gene_id, protrusion_RNA_libraries) %>%
+  pivot_longer(cols = contains(c("trap", "txn")),
+               names_to = "library",
+               values_to = "TPM") %>%
+  # filter(library %in% protrusion_RNA_libraries) %>%
+  mutate(protrusion_RNA = if_else(TPM > 10, TRUE, FALSE)) 
+
+saveRDS(avgTPM, "./RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_tidy.RDS")
+
+## Check gene counts per library groups 
+avgTPM %>%
+  filter(protrusion_RNA == TRUE) %>%
+  ggplot(aes(x = library, fill = protrusion_RNA)) +
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+##
+protrusion_RNA <- avgTPM %>%
+  group_by(gene_id) %>%
+  summarise(RNA_in_protrusion = sum(protrusion_RNA))
+
+saveRDS(protrusion_RNA, "./RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_num-datasets.RDS")
+
+## Check histogram
+protrusion_RNA %>%
+  ggplot(aes(x = RNA_in_protrusion)) + 
+  geom_histogram(bins = 12)
+
+## Mean TPM across libraries 
+Mean_TPM_libraries <- read.table(pipe("pbpaste"), header=FALSE) %>% pull(V1)
+
+Mean_TPM <- avgTPM_wide %>%
+  dplyr::select(gene_id, Mean_TPM_libraries) %>%
+  pivot_longer(cols = contains(c("trap", "txn")),
+               names_to = "library",
+               values_to = "TPM") %>%
+  group_by(gene_id) %>%
+  summarise(Mean_TPM_across_dataset = mean(TPM)) 
+
+saveRDS(Mean_TPM, "./RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_Mean-TPM.RDS")
+
+
+```
+
+## Preferential Localisation To Protrusions
+
+### Helicos libraries 
+
+ - Simple numerical foldchange - The dataset does not give replicate information 
+
+```{r}
+## 
+avgTPM_wide <- readRDS("./RNAseq/quant_results/all-glia_avgTPM_wide.RDS")
+
+## 
+helicos_l2fc <- avgTPM_wide %>%
+  dplyr::select(gene_id, contains(c("Astrocytes-D", "Astrocytes-E"))) %>%
+  mutate(`Astrocytes-D_l2fc` = log2(`Astrocytes-D_protrusion_txn` / `Astrocytes-D_soma_txn`)) %>%
+  mutate(`Astrocytes-E_l2fc` = log2(`Astrocytes-E_protrusion_txn` / `Astrocytes-E_soma_txn`)) %>%
+  mutate(across(everything(), ~replace(.x, is.nan(.), NA)))
+
+saveRDS(helicos_l2fc, "./RNAseq/summary_table/preferential_localisation/helicos_l2fc.RDS")
+
+```
+
+### Oligodendrocytes and Astrocytes-A
+
+ - Oligodendrocytes: rat kallisto output will be used for analysis and then converted to mouse genes 
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+library(IHW)
+library(biomaRt)
+
+# * * * * * Oligodendrocytes 
+
+##
+odc_kallisto <- readRDS("./RNAseq/quant_results/Rnor_kallisto_tximport_gni.RDS")
+head(odc_kallisto$counts)
+
+## Create meta table
+odc_meta <- tibble(rownames = colnames(odc_kallisto$counts)) %>%
+  mutate(compartment = case_when(
+    str_detect(rownames, "protrusion") ~ "protrusion",
+    str_detect(rownames, "soma") ~ "soma"
+  )) %>%
+  column_to_rownames(var = "rownames")
+
+## Run deseq2
+odc_dds <- DESeqDataSetFromTximport(odc_kallisto, colData = odc_meta,
+                                    design = ~ compartment)
+odc_dds$compartment <- relevel(odc_dds$compartment, ref = "soma")
+odc_dds <- DESeq(odc_dds)
+odc_res <- results(odc_dds, filterFun = ihw)
+odc_res
+resultsNames(odc_dds)
+odc_res_lfc <- lfcShrink(odc_dds, coef = "compartment_protrusion_vs_soma", 
+                         res = odc_res, type = "apeglm")
+
+odc_de_result <- as_tibble(odc_res_lfc) %>%
+  mutate(gene_id = rownames(odc_res_lfc)) %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", ""))
+
+saveRDS(odc_de_result, "./RNAseq/summary_table/preferential_localisation/odc_de-result_raw.RDS")
+
+## Convert to mouse genes
+rat_mart98 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "rnorvegicus_gene_ensembl", 
+                   host = "https://sep2019.archive.ensembl.org")
+id_dictionary <- getBM(attributes = c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene", "mmusculus_homolog_orthology_type"),
+      mart = rat_mart98,
+      filters = "ensembl_gene_id",
+      values = odc_de_result$gene_id) %>%
+  dplyr::select(-mmusculus_homolog_orthology_type)
+
+odc_de_result_Mmus <- odc_de_result %>%
+  left_join(id_dictionary, by = c("gene_id" = "ensembl_gene_id")) %>%
+  filter(str_detect(mmusculus_homolog_ensembl_gene, "ENS")) %>%
+  group_by(mmusculus_homolog_ensembl_gene) %>%
+  summarise(log2FoldChange = median(log2FoldChange),
+            padj = median(padj)) %>%
+  ungroup() %>%
+  dplyr::rename("gene_id" = mmusculus_homolog_ensembl_gene)
+
+saveRDS(odc_de_result_Mmus,
+        "./RNAseq/summary_table/preferential_localisation/odc_de-result_Mmus-converted.RDS")
+
+
+# * * * * * Astrocytes-A
+
+## Filter kallisto results 
+aa_kallisto <- readRDS("./RNAseq/quant_results/Mmus_kallisto_tximport_gni.RDS")
+
+aa_kallisto$abundance <- aa_kallisto$abundance %>%
+  as.data.frame() %>%
+  dplyr::select(contains("Astrocytes-A")) %>%
+  dplyr::select(contains("txn")) %>%
+  as.matrix()
+aa_kallisto$counts <- aa_kallisto$counts %>%
+  as.data.frame() %>%
+  dplyr::select(contains("Astrocytes-A")) %>%
+  dplyr::select(contains("txn")) %>%
+  as.matrix()
+aa_kallisto$length <- aa_kallisto$length %>%
+  as.data.frame() %>%
+  dplyr::select(contains("Astrocytes-A")) %>%
+  dplyr::select(contains("txn")) %>%
+  as.matrix()
+
+## Create meta table
+aa_meta <- tibble(rownames = colnames(aa_kallisto$counts)) %>%
+  mutate(compartment = case_when(
+    str_detect(rownames, "protrusion") ~ "protrusion",
+    str_detect(rownames, "soma") ~ "soma"
+  )) %>%
+  column_to_rownames(var = "rownames")
+
+## Run deseq2
+aa_dds <- DESeqDataSetFromTximport(aa_kallisto, colData = aa_meta,
+                                    design = ~ compartment)
+aa_dds$compartment <- relevel(aa_dds$compartment, ref = "soma")
+aa_dds <- DESeq(aa_dds)
+aa_res <- results(aa_dds, filterFun = ihw)
+aa_res
+resultsNames(aa_dds)
+aa_res_lfc <- lfcShrink(aa_dds, coef = "compartment_protrusion_vs_soma", 
+                         res = aa_res, type = "apeglm")
+
+aa_de_result <- as_tibble(aa_res_lfc) %>%
+  mutate(gene_id = rownames(aa_res_lfc)) %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", ""))
+
+saveRDS(aa_de_result, "./RNAseq/summary_table/preferential_localisation/aa_de-result_raw.RDS")
+
+```
+
+### Calculate number of datasets supporting preferential localisation and their mean l2fc
+
+ - localisation = padj < 0.05 and l2fc > 0 (deseq2) ot l2fc > 0 (Helicos TPM)
+
+```{r}
+## Deseq2 results
+odc_de_result_Mmus <- readRDS("./RNAseq/summary_table/preferential_localisation/odc_de-result_Mmus-converted.RDS")
+odc_enriched <- odc_de_result_Mmus %>%
+  filter(padj < 0.05) %>% 
+  dplyr::select(gene_id, log2FoldChange, padj) %>%
+  mutate(cell_type = "Oligodendrocytes")
+
+aa_de_result <- readRDS("./RNAseq/summary_table/preferential_localisation/aa_de-result_raw.RDS")
+aa_enriched <- aa_de_result %>%
+  filter(padj < 0.05) %>%
+  dplyr::select(gene_id, log2FoldChange, padj) %>%
+  mutate(cell_type = "Astrocytes_A")
+
+## Numerical results from Helicos
+helicos_enriched <- readRDS("./RNAseq/summary_table/preferential_localisation/helicos_l2fc.RDS") %>%
+  dplyr::select(gene_id, contains("l2fc")) %>%
+  pivot_longer(cols = contains("l2fc"),
+               names_to = "cell_type",
+               values_to = "log2FoldChange") %>%
+  mutate(padj = NA) %>%
+  dplyr::select(gene_id, log2FoldChange, padj, cell_type) %>%
+  filter(!is.na(log2FoldChange))
+
+## Combine into a tidy dataframe
+preferential_localisation_tidy <- bind_rows(
+  odc_enriched, 
+  aa_enriched,
+  helicos_enriched
+) %>%
+  mutate(pref_localised = if_else(log2FoldChange > 0 , TRUE, FALSE))
+
+preferential_localisation_tidy %>%
+  saveRDS("./RNAseq/summary_table/preferential_localisation/preferential_localisation_tidy.RDS")
+
+## Get summary dataframe
+preferential_localisation_summary <- preferential_localisation_tidy %>%
+  group_by(gene_id) %>%
+  summarise(enriched_in_protrusion = sum(pref_localised),
+            mean_RNA_enrichment_l2fc = mean(log2FoldChange, na.rm = TRUE))
+
+preferential_localisation_summary %>%
+  saveRDS("./RNAseq/summary_table/preferential_localisation/preferential_localisation_summary.RDS")
+
+## Check distribution
+preferential_localisation_summary %>%
+  ggplot(aes(x = enriched_in_protrusion)) +
+  geom_histogram(bins = 4)
+
+```
+
+
+## Ribosome Association In Protrusions
+
+ - TRAP TPM > 10 (this is a subset of Presence in Protrusions) (Max 4 datasets)
+
+```{r}
+## 
+avgTPM_wide <- readRDS("./RNAseq/quant_results/all-glia_avgTPM_wide.RDS")
+
+##
+protrusion_trap_libraries <- read.table(pipe("pbpaste"), header=FALSE) %>% pull(V1) # From googledrive
+
+protrusion_translation <- avgTPM_wide %>%
+  dplyr::select(gene_id, protrusion_trap_libraries) %>%
+  pivot_longer(cols = contains(c("trap")),
+               names_to = "library",
+               values_to = "TPM") %>%
+  # filter(library %in% protrusion_RNA_libraries) %>%
+  mutate(protrusion_translation = if_else(TPM > 10, TRUE, FALSE)) 
+
+saveRDS(protrusion_translation,
+        "./RNAseq/summary_table/translation_in_protrusion/Protrusion-translation_tidy.RDS")
+
+protrusion_translation_datasets <- protrusion_translation %>%
+  group_by(gene_id) %>%
+  summarise(translation_in_protrusion = sum(protrusion_translation)) 
+
+saveRDS(protrusion_translation_datasets,
+        "./RNAseq/summary_table/translation_in_protrusion/Protrusion-translation_num-datasets.RDS")
+
+```
+
+## Preferential Translation In Protrusions
+
+ - Preferentially translated = p < 0.05, l2fc > 0
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+library(IHW)
+
+# * * * * * Astrocyte trap datasets 
+
+## Define function
+run_deseq2 <- function(kallisto_output, cell_type){
+  
+  ## Filter kallisto results
+  kallisto <- kallisto_output
+  kallisto$abundance <- kallisto$abundance %>%
+    as.data.frame() %>%
+    dplyr::select(contains(cell_type)) %>%
+    dplyr::select(contains("trap")) %>%
+    as.matrix()
+  kallisto$counts <- kallisto$counts %>%
+    as.data.frame() %>%
+    dplyr::select(contains(cell_type)) %>%
+    dplyr::select(contains("trap")) %>%
+    as.matrix()
+  kallisto$length <- kallisto$length %>%
+    as.data.frame() %>%
+    dplyr::select(contains(cell_type)) %>%
+    dplyr::select(contains("trap")) %>%
+    as.matrix()
+  
+  ## Create meta table
+  meta <- tibble(rownames = colnames(kallisto$counts)) %>%
+    mutate(compartment = case_when(
+      str_detect(rownames, "protrusion") ~ "protrusion",
+      str_detect(rownames, "soma") ~ "soma"
+    )) %>%
+    column_to_rownames(var = "rownames")
+  
+  ## Run deseq2
+  dds <- DESeqDataSetFromTximport(kallisto, colData = meta,
+                                     design = ~ compartment)
+  dds$compartment <- relevel(dds$compartment, ref = "soma")
+  dds <- DESeq(dds)
+  res <- results(dds, filterFun = ihw)
+  res
+  resultsNames(dds)
+  res_lfc <- lfcShrink(dds, coef = "compartment_protrusion_vs_soma", 
+                          res = res, type = "apeglm")
+  
+  de_result <- as_tibble(res_lfc) %>%
+    mutate(gene_id = rownames(res_lfc)) %>%
+    mutate(gene_id = str_replace(gene_id, "\\..*", "")) %>%
+    mutate(cell_type = cell_type) %>%
+    return()
+  
+}
+
+## Import kallisto output
+kallisto_output <- readRDS("./RNAseq/quant_results/Mmus_kallisto_tximport_gni.RDS")
+
+## Run deseq2
+AA_trap <- run_deseq2(kallisto_output, "Astrocytes-A") 
+AB_trap <- run_deseq2(kallisto_output, "Astrocytes-B") 
+AC_trap <- run_deseq2(kallisto_output, "Astrocytes-C") 
+
+## Collate results 
+Astrocyte_trap_results <- bind_rows(AA_trap, AB_trap, AC_trap)
+
+Astrocyte_trap_results %>%
+  saveRDS("./RNAseq/summary_table/preferential_translation/Astrocyte_trap-results_tidy.RDS")
+
+# * * * * * Microglia trap dataset 
+
+##
+microglia_counts <- readRDS("./RNAseq/Rawdata_unavailable/Vasek2021/Vasek2021_counts_dataframe_names_converted.RDS") %>%
+  dplyr::select(gene_id, contains("induced")) %>%
+  dplyr::select(-contains("txn")) %>%
+  rename_with(function(x){
+    str_replace(x, "_induced", "")
+    }) %>%
+  column_to_rownames(var = "gene_id") %>%
+  as.matrix()
+
+microglia_meta <- tibble(rownames = colnames(microglia_counts)) %>%
+  mutate(compartment = case_when(
+    str_detect(rownames, "protrusion") ~ "protrusion",
+    str_detect(rownames, "soma") ~ "soma"
+  )) %>%
+  column_to_rownames(var = "rownames")
+
+## Run deseq2
+microglia_dds <- DESeqDataSetFromMatrix(microglia_counts, colData = microglia_meta,
+                                    design = ~ compartment)
+microglia_dds$compartment <- relevel(microglia_dds$compartment, ref = "soma")
+microglia_dds <- DESeq(microglia_dds)
+microglia_res <- results(microglia_dds, filterFun = ihw)
+microglia_res
+resultsNames(microglia_dds)
+microglia_res_lfc <- lfcShrink(microglia_dds, coef = "compartment_protrusion_vs_soma", 
+                         res = microglia_res, type = "apeglm")
+
+microglia_de_result <- as_tibble(microglia_res_lfc) %>%
+  mutate(gene_id = rownames(microglia_res_lfc)) %>%
+  mutate(gene_id = str_replace(gene_id, "\\..*", "")) %>%
+  mutate(cell_type = "Microglia")
+
+microglia_de_result %>%
+  saveRDS("./RNAseq/summary_table/preferential_translation/Microglia_trap-results_tidy.RDS")
+
+# * * * * * Summary
+
+## Create tidy dataframe and summarise
+Astrocyte_trap_results <- readRDS("./RNAseq/summary_table/preferential_translation/Astrocyte_trap-results_tidy.RDS")
+microglia_de_result <-   readRDS("./RNAseq/summary_table/preferential_translation/Microglia_trap-results_tidy.RDS")
+
+trap_results_tidy <- bind_rows(Astrocyte_trap_results, microglia_de_result) %>%
+  filter(padj < 0.05) %>%
+  dplyr::select(gene_id, log2FoldChange, padj, cell_type) %>%
+  mutate(pref_translated = if_else(log2FoldChange > 0 , TRUE, FALSE))
+
+trap_results_tidy %>%
+  saveRDS("./RNAseq/summary_table/preferential_translation/trap_results_tidy.RDS")
+
+trap_results_summary <- trap_results_tidy %>%
+  group_by(gene_id) %>%
+  summarise(enhanced_translation_in_protrusion = sum(pref_translated),
+            mean_translation_enhancement_l2fc = mean(log2FoldChange, na.rm = TRUE))
+
+trap_results_summary %>%
+  saveRDS("./RNAseq/summary_table/preferential_translation/trap_results_summary.RDS")
+  
+## Check distribution
+trap_results_summary %>%
+  ggplot(aes(x = enhanced_translation_in_protrusion)) +
+  geom_histogram(bins = 4) 
+
+```
+
+
+## Combine into a single dataframe
+
+```{r}
+## Get individual columns 
+protrusion_RNA <- readRDS("./RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_num-datasets.RDS")
+Mean_TPM <- readRDS("./RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_Mean-TPM.RDS")
+preferential_localisation_summary <-  readRDS("./RNAseq/summary_table/preferential_localisation/preferential_localisation_summary.RDS")
+protrusion_translation_datasets <- readRDS("./RNAseq/summary_table/translation_in_protrusion/Protrusion-translation_num-datasets.RDS")
+trap_results_summary <- readRDS("./RNAseq/summary_table/preferential_translation/trap_results_summary.RDS")
+
+## Join 
+df <- full_join(protrusion_RNA, Mean_TPM) %>%
+  full_join(preferential_localisation_summary) %>%
+  full_join(protrusion_translation_datasets) %>%
+  full_join(trap_results_summary)
+
+## Add gene symbol and names 
+library(biomaRt)
+mouse_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", 
+                   host = "https://apr2019.archive.ensembl.org")
+listAttributes(mouse_mart96) -> mouse_biomart_attributes
+id_dictionary <- getBM(attributes = c("ensembl_gene_id", "external_gene_name", "description"),
+      mart = mouse_mart96,
+      filters = "ensembl_gene_id",
+      values = df$gene_id)
+
+df_annotated <- left_join(df, id_dictionary, by = c("gene_id" = "ensembl_gene_id")) %>%
+  dplyr::select(gene_id, "gene_symbol" = external_gene_name, description, everything())
+
+df_annotated %>%
+  saveRDS("./RNAseq/summary_table/df_annotated.RDS")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

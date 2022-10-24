@@ -7,6 +7,7 @@ library(tidyverse)
 library(ggrepel)
 library(qs)
 library(furrr)
+library(colorspace)
 plan(multisession, workers = 8)
 
 # ----- Prepare Flybase disease association dataframe 
@@ -128,28 +129,29 @@ write_tsv(gl_disease_gene_list, "./output/analysis/gl_disease_gene_list_top-pval
 
 gl_disease_statistics %>%
   filter(log2foldchange != -Inf) %>%
-  mutate(put_label = if_else(adj_pvalue < 0.01, disease, NA_character_)) %>%
+  mutate(put_label = if_else(adj_pvalue < 0.001 & log2foldchange >= 1.8, disease, NA_character_)) %>%
   ggplot(aes(x = log2foldchange, y = -log(adj_pvalue), colour = count_in_gl)) +
-  geom_point(alpha = 1, stroke = 0, size = 3) +
+  geom_point(alpha = 1, stroke = 0, size = 1.5) +
   geom_text_repel(aes(label = put_label), 
     max.overlaps = 100, hjust = 0,
-    cex = 2.2, colour = "gray40") +
+    cex = 1, colour = "gray40", segment.size = 0.1) +
   geom_hline(yintercept = -log(0.01), linetype = "dashed", colour = "gray80") +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80") +
   labs(
-    title = "Enrichment of disease-associated genes within glial protrusion-localised transcripts",
-    subtitle = "Vocalno plot: Fisher's exact test against full fly genome",
+    # title = "Enrichment of disease-associated genes within glial protrusion-localised transcripts",
+    # subtitle = "Vocalno plot: Fisher's exact test against full fly genome",
     x = "log2FoldChange",
     y = "Bonferroni-adjusted p-value (-log10)",
-    colour = "Localised genes"
+    colour = "Localised\ngene count"
   ) + 
-  scale_colour_viridis_c() +
-  coord_cartesian(xlim = c(-3.5, 3.5)) +
-  theme_classic(base_size = 10) +
-  annotate(geom = "text", x = -3, y = -log(0.01) + 2, label = "p=0.01", cex = 3, alpha = 0.5)
+  scale_colour_continuous_sequential(palette = "Inferno", begin = 0.2) +
+  coord_cartesian(xlim = c(0, 3.5)) +
+  theme_classic(base_size = 6) +
+  theme(legend.key.width = unit(0.2,"cm")) +
+  annotate(geom = "text", x = 0, y = -log(0.01) + 2, label = "p=0.01", cex = 2, alpha = 0.5) 
 
-ggsave("./output/graphics/disease_association_volcano_plot.pdf", 
-  width = 10, height = 8, useDingbats = FALSE)
+ggsave("./output/graphics/human-disease-volcano-plot.pdf",
+       width = 10 * 0.33, height = 8 * 0.33, device = cairo_pdf)
 
 
 
