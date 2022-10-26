@@ -15,14 +15,18 @@ embeddings <- get_embeddings(loom) %>%
 cell_anno <- get_cell_annotation(loom) %>%
   rownames_to_column(var = "cell_id") %>%
   left_join(embeddings, by = "cell_id") %>%
-  dplyr::select(cell_id, age, annotation, annotation__ontology_id, n_counts, n_genes, percent_mito, sex, tissue, contains("hvg"))
+  dplyr::select(cell_id, age, annotation, annotation__ontology_id, n_counts, n_genes, percent_mito, sex, tissue, contains("hvg")) %>%
+  mutate(annotation = case_when(
+    str_detect(annotation, "subperineurial") ~ "subperineurial glial cell",
+    str_detect(annotation, "perineurial") ~ "perineurial glial cell",
+    TRUE ~ annotation
+  ))
 glia_anno <- c(
-  "perineurial glial sheath",
+  "perineurial glial cell",
   "subperineurial glial cell",
   "ensheathing glial cell",
   "adult antenna glial cell",
   "adult brain cell body glial cell",
-  "adult brain perineurial glial cell",
   "adult glial cell",
   "adult lamina epithelial/marginal glial cell",
   "adult optic chiasma glial cell",
@@ -33,11 +37,13 @@ glia_anno <- c(
   "peripheral glial cell"
 )
 all_glia_cell_anno <- filter(cell_anno, annotation %in% glia_anno)
+all_glia_cell_anno$annotation %>% unique()
+
 
 ## Plot (3 + 11 cell types)
 
 colours <- c(sequential_hcl(3, palette = "Peach"), sequential_hcl(11, palette = "Teal"))
-colours <- c(sequential_hcl(6, palette = "OrRd")[1:3], sequential_hcl(11, palette = "TealGrn"))
+colours <- c(sequential_hcl(6, palette = "OrRd")[1:3], sequential_hcl(10, palette = "TealGrn"))
 
 all_glia_cell_anno %>%
   mutate(annotation = fct_relevel(annotation, glia_anno)) %>%

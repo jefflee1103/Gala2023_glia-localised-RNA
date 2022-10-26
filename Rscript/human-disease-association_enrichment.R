@@ -134,9 +134,9 @@ gl_disease_statistics %>%
   geom_point(alpha = 1, stroke = 0, size = 1.5) +
   geom_text_repel(aes(label = put_label), 
     max.overlaps = 100, hjust = 0,
-    cex = 1, colour = "gray40", segment.size = 0.1) +
-  geom_hline(yintercept = -log(0.01), linetype = "dashed", colour = "gray80") +
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80") +
+    cex = 0.8, colour = "gray40", segment.size = 0.1) +
+  geom_hline(yintercept = -log(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
   labs(
     # title = "Enrichment of disease-associated genes within glial protrusion-localised transcripts",
     # subtitle = "Vocalno plot: Fisher's exact test against full fly genome",
@@ -144,11 +144,11 @@ gl_disease_statistics %>%
     y = "Bonferroni-adjusted p-value (-log10)",
     colour = "Localised\ngene count"
   ) + 
-  scale_colour_continuous_sequential(palette = "Inferno", begin = 0.2) +
+  scale_colour_continuous_sequential(palette = "Inferno", begin = 0.2, end = 0.8) +
   coord_cartesian(xlim = c(0, 3.5)) +
   theme_classic(base_size = 6) +
   theme(legend.key.width = unit(0.2,"cm")) +
-  annotate(geom = "text", x = 0, y = -log(0.01) + 2, label = "p=0.01", cex = 2, alpha = 0.5) 
+  annotate(geom = "text", x = 0.2, y = -log(0.01) + 2, label = "p=0.01", cex = 2, alpha = 0.5) 
 
 ggsave("./output/graphics/human-disease-volcano-plot.pdf",
        width = 10 * 0.33, height = 8 * 0.33, device = cairo_pdf)

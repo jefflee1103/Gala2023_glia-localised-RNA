@@ -79,20 +79,83 @@ treemapPlot(rrvgo_filt_foldenrichment$BP$reducedTerms)
 treemapPlot(rrvgo_filt_bonferroni$BP$reducedTerms)
 
 ## Try simplify enrichment
-gl_go <- read_csv("./output/analysis/gl_go-enrichment.csv")
+se_cutoffs <- list(c(0.01, 2), c(0.01, 1.5), c(0.01, 2)) %>%
+  set_names(c("BP", "MF", "CC"))
+
 ont_string <- c("BP", "MF", "CC") %>% set_names() 
 
 se_goid <- ont_string %>%
   map(~{ 
-    filter(gl_go, bonferroni < 0.01 & foldEnrichment > 2) %>%
-      filter(ontology == .x) %>%
+    filter(gl_go, ontology == .x) %>%
+    filter(bonferroni < (pluck(se_cutoffs, .x))[1] & 
+             foldEnrichment > (pluck(se_cutoffs, .x))[2]) %>%
+      
       pull(GO.ID)
   })
+
 se_simmat <- future_map(se_goid, ~ GO_similarity(.x, db = "org.Dm.eg.db"))
 future_map(se_simmat, select_cutoff) %>% wrap_plots()
-pdf("~/Desktop/se-test_fc2.0_cutoff0.75.pdf", width = 8, height = 8)
-se_simplify <- map(se_simmat, ~ simplifyGO(.x, control = list(cutoff = 0.75)))
+
+## BP
+bp_clusters <- simplifyGO(se_simmat$BP, control = list(cutoff = 0.75), plot = FALSE)
+plot <- ht_clusters(se_simmat$BP, bp_clusters$cluster, 
+            min_term = 10,
+            max_words = 6,
+            order_by_size = TRUE, 
+            bg_gp = gpar(fill = "gray92", col = "#AAAAAA"),
+            word_cloud_grob_param = list(max_width = unit(40, "mm")), 
+            fontsize_range = c(2, 9),
+            col = sequential_hcl(n = 30, palette = "Reds 3", rev = TRUE),
+            exclude_words = c("cellular", "involved", "process", "regulation", "cell", "metabolic", "transport", "positive", "negative"))
+pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/bp.pdf", width = 13 * 0.3937, height = 6.3 * 0.3937)
+plot
 dev.off()
+
+## MF
+mf_clusters <- simplifyGO(se_simmat$MF, control = list(cutoff = 0.9), plot = FALSE)
+plot <- ht_clusters(se_simmat$MF, mf_clusters$cluster, 
+                    min_term = 5,
+                    max_words = 6,
+                    order_by_size = TRUE, 
+                    bg_gp = gpar(fill = "gray92", col = "#AAAAAA"),
+                    word_cloud_grob_param = list(max_width = unit(40, "mm")), 
+                    fontsize_range = c(4, 9),
+                    col = sequential_hcl(n = 30, palette = "Greens 3", rev = TRUE),
+                    exclude_words = c("adenyl", "guanyl", "activity", "small", "molecule"),
+                    )
+pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/mf.pdf", width = 13 * 0.3937, height = 6.3 * 0.3937)
+plot
+dev.off()
+
+## CC
+cc_clusters <- simplifyGO(se_simmat$CC, control = list(cutoff = 0.9), plot = FALSE)
+plot <- ht_clusters(se_simmat$CC, cc_clusters$cluster, 
+                    min_term = 10,
+                    max_words = 6,
+                    order_by_size = TRUE, 
+                    bg_gp = gpar(fill = "gray92", col = "#AAAAAA"),
+                    word_cloud_grob_param = list(max_width = unit(40, "mm")), 
+                    fontsize_range = c(4, 9),
+                    col = sequential_hcl(n = 30, palette = "Blues 3", rev = TRUE),
+                    exclude_words = c("mitochondrial", "large", "small", "complex"),
+)
+pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/cc.pdf", width = 13 * 0.3937, height = 6.3 * 0.3937)
+plot
+dev.off()
+
+
+
+##
+gl <- read_tsv("/Users/sjoh4548/Desktop/glia-localised-rna.txt")
+id_interest <- gl %>%
+  filter(rna_in_protrusion >= 8) %>%
+  filter(`ensheathing glial cell` == TRUE | `perineurial glial sheath` == TRUE | `subperineurial glial cell` == TRUE | `adult brain perineurial glial cell` == TRUE)
+
+id_interest %>% colnames()
+
+bp_clusters %>%
+  group_by(cluster) %>%
+  summarise(id)
 
 
 

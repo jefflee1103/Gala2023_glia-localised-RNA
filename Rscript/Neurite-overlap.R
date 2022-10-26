@@ -3,6 +3,7 @@
 
 library(tidyverse)
 library(readxl)
+library(patchwork)
 
 
 # Prepare data ------------------------------------------------------------
@@ -135,11 +136,12 @@ dmel_space_with_neurite_summary <- dmel_space_with_neurite %>%
 ## Combine species ##
 
 neurite_overlap_summary <- bind_rows(df_with_neurite_summary, dmel_space_with_neurite_summary)
-
+View(neurite_overlap_summary)
 
 # Plot --------------------------------------------------------------------
 c("#E58606", "#5D69B1", "#52BCA3", "#99C945", "#CC61B0", "#24796C", "#DAA51B", "#2F8AC4", "#764E9F", "#ED645A", "#CC3A8E", "#A5AA99")
 
+## RNA present only
 fill_colour <- c("#E58606", "#52BCA3", "#2F8AC4")
 
 neurite_overlap_summary %>%
@@ -187,13 +189,110 @@ ggsave("./output/graphics/overlap_with_neurite_data_bar.pdf",
   
 
 
+## RNA present and enriched + translated
+c("#E58606", "#5D69B1", "#52BCA3", "#99C945", "#CC61B0", "#24796C", "#DAA51B", "#2F8AC4", "#764E9F", "#ED645A", "#CC3A8E", "#A5AA99")
+
+fill_colour <- c("#52BCA3", "#ED645A", "#2F8AC4")
+
+neurite_overlap_summary %>%
+  filter(species == "Mouse") %>%
+  mutate(celltype = str_replace(celltype, "\n", " ")) %>%
+  mutate(celltype = fct_relevel(celltype, c("Neurite only", "Both", "Glia only"))) %>%
+  ggplot(aes(
+    x = type,
+    y = count,
+    fill = celltype
+  )) +
+  geom_col(width = 0.7, alpha = 1) +
+  geom_text(aes(
+    x = 1.53,
+    label = celltype
+  ), position = position_stack(vjust = 0.5), cex = 1) +
+  # geom_text(aes(
+  #   x = 1.35,
+  #   label = "|"
+  # ), position = position_stack(vjust = 0.5), cex = 1) +
+  geom_label(aes(
+    x = type,
+    # y = count,
+    label = label,
+    group = celltype
+  ), 
+  label.padding = unit(0.1, "lines"),
+  position = position_stack(vjust = 0.5), label.size = 0.1, cex = 1.1, fill = "white", alpha = 0.5, 
+  # fontface = "bold"
+  ) + 
+  labs(x = "",
+       y = "Proportion of genes (Mouse)",
+       fill = "") +
+  scale_fill_manual(values = fill_colour) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~ type, scales = "free", ncol = 1, strip.position = "left") +
+  coord_flip() +
+  theme_minimal(base_size = 6) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        strip.text = element_text(size = 4),
+        panel.background = element_blank(),
+        plot.background = element_blank()) -> mouse_plot
+
+neurite_overlap_summary %>%
+  filter(species == "Fly") %>%
+  mutate(celltype = str_replace(celltype, "\n", " ")) %>%
+    mutate(celltype = fct_relevel(celltype, c("Neurite only", "Both", "Glia only"))) %>%
+  ggplot(aes(
+    x = type,
+    y = count,
+    fill = celltype
+  )) +
+  geom_col(width = 0.7, alpha = 1) +
+  geom_text(aes(
+    x = 1.53,
+    label = celltype
+  ), position = position_stack(vjust = 0.5), cex = 1) +
+  # geom_text(aes(
+  #   x = 1.35,
+  #   label = "|"
+  # ), position = position_stack(vjust = 0.5), cex = 1) +
+  geom_label(aes(
+    x = type,
+    # y = count,
+    label = label,
+    group = celltype
+  ), 
+  label.padding = unit(0.1, "lines"),
+  position = position_stack(vjust = 0.5), label.size = 0.1, cex = 1.1, fill = "white", alpha = 0.5, 
+  # fontface = "bold"
+  ) + 
+  labs(x = "",
+       y = "Proportion of genes (Fly)",
+       fill = "") +
+  scale_fill_manual(values = fill_colour) + 
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~ type, scales = "free", ncol = 1, strip.position = "left") +
+  coord_flip() +
+  theme_minimal(base_size = 6) +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        strip.text = element_text(size = 4),
+        panel.background = element_blank(),
+        plot.background = element_blank()) -> fly_plot
+
+mouse_plot + fly_plot
+
+ggsave("./output/graphics/overlap_with_neurite_data_full.pdf",
+       width = 13 * 0.33, height = 4 * 0.33, device = cairo_pdf)
 
 
 
 neurite_overlap_summary %>%
-  filter(type == "RNA\npresent")
+  
 
-neurite_overlap_summary$type
+
 
 
 
