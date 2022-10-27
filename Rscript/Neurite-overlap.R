@@ -287,12 +287,59 @@ mouse_plot + fly_plot
 ggsave("./output/graphics/overlap_with_neurite_data_full.pdf",
        width = 13 * 0.33, height = 4 * 0.33, device = cairo_pdf)
 
+## ---- Without Fly
+c("#E58606", "#5D69B1", "#52BCA3", "#99C945", "#CC61B0", "#24796C", "#DAA51B", "#2F8AC4", "#764E9F", "#ED645A", "#CC3A8E", "#A5AA99")
 
+fill_colour <- c("#52BCA3", "#ED645A", "#2F8AC4")
 
 neurite_overlap_summary %>%
+  filter(species == "Mouse") %>%
+  # mutate(celltype = str_replace(celltype, "\n", " ")) %>%
+  mutate(celltype = fct_relevel(celltype, c("Glia\nonly", "Both", "Neurite\nonly"))) %>%
+  ggplot(aes(
+    x = type,
+    y = count,
+    fill = celltype
+  )) +
+  geom_col(width = 0.5, alpha = 1) +
+  geom_text(aes(
+    x = 1.43,
+    label = celltype
+  ), position = position_stack(vjust = 0.5), cex = 1) +
+  geom_text(aes(
+    x = 1.25,
+    label = "-"
+  ), position = position_stack(vjust = 0.5), cex = 1) +
+  geom_label(aes(
+    x = type,
+    # y = count,
+    label = label,
+    group = celltype
+  ),
+  label.padding = unit(0.1, "lines"),
+  position = position_stack(vjust = 0.5), label.size = 0.1, cex = 1.1, fill = "white", alpha = 0.5,
+  # fontface = "bold"
+  ) +
+  labs(
+    x = "",
+    y = "Proportion of overlap\nwith neurite localised RNA",
+    fill = ""
+  ) +
+  scale_fill_manual(values = fill_colour) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~type, scales = "free", nrow = 1, strip.position = "top") +
+  theme_minimal(base_size = 6) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid = element_blank(),
+    strip.text = element_text(size = 4)
+  )
   
 
-
+ggsave("./output/graphics/overlap_with_neurite_data_mouse_only.pdf",
+       width = 5.5 * 0.33, height = 5 * 0.33, device = cairo_pdf)
 
 
 

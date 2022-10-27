@@ -387,7 +387,7 @@ plot_gene_tsne <- function(gene, palette, limit_counts){
     theme(legend.position = "bottom")
 }
 
-plot_gene_tsne("nrv2", "red", 8)
+plot_gene_tsne("nrv2", "red", 3)
 
 # septate_junction_gene_names <- read.delim(pipe("pbpaste"), col.names = "genes") %>% pull(genes)
 # map(septate_junction_gene_names, ~
@@ -413,7 +413,7 @@ plot_gene_ridge <- function(gene){
     theme(legend.position = "none")
 }
 
-plot_gene_ridge("Mdr65")
+plot_gene_ridge("nrv2")
 ```
 
 ## Glial subtype summary

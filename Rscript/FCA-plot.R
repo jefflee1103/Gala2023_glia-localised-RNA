@@ -43,7 +43,7 @@ all_glia_cell_anno$annotation %>% unique()
 ## Plot (3 + 11 cell types)
 
 colours <- c(sequential_hcl(3, palette = "Peach"), sequential_hcl(11, palette = "Teal"))
-colours <- c(sequential_hcl(6, palette = "OrRd")[1:3], sequential_hcl(10, palette = "TealGrn"))
+colours <- c(sequential_hcl(6, palette = "OrRd")[1:3], qualitative_hcl(10, palette = "Cold"))
 
 all_glia_cell_anno %>%
   mutate(annotation = fct_relevel(annotation, glia_anno)) %>%
@@ -59,7 +59,7 @@ all_glia_cell_anno %>%
   theme_classic(base_size = 6) +
   theme(
     legend.position = "right",
-    legend.text = element_text(size = 3)
+    legend.text = element_text(size = 4)
     ) +
   guides(colour = guide_legend(
     keywidth = 0.3,
@@ -68,8 +68,8 @@ all_glia_cell_anno %>%
   ))
 
 ggsave("./output/graphics/FCA-plot.pdf",
-       width = 8 * 0.33, height = 5 * 0.33, device = cairo_pdf)
- 
+       width = 9 * 0.33, height = 5 * 0.33, device = cairo_pdf)
+    
 
 
 

@@ -39,11 +39,17 @@ dalia_list <- tibble(
   )
 )
 
-gene_list<- dalia_list %>%
+gene_list <- dalia_list %>%
   left_join(ens99, by = c("X1" = "gene_name")) %>%
   dplyr::select(gene_id, "gene_name" = X1) %>%
-  mutate(is_mouse_dmel_convertible = if_else(gene_id %in% gl_nd$dmel_gene_id, TRUE, FALSE)) %>%
-  mutate(is_in_1700 = if_else(gene_id %in% id_interest$dmel_gene_id, TRUE, FALSE)) %>%
+  mutate(
+    is_mouse_dmel_convertible =
+      if_else(gene_id %in% gl_nd$dmel_gene_id, TRUE, FALSE)
+  ) %>%
+  mutate(
+    is_in_1700 =
+      if_else(gene_id %in% id_interest$dmel_gene_id, TRUE, FALSE)
+  ) %>%
   left_join(id_interest, by = c("gene_id" = "dmel_gene_id"))
 
 gene_list %>%
