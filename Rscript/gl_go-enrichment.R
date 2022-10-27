@@ -3,12 +3,12 @@
 
 # ----- Environment
 
-library(topGO)
+# library(topGO)
 library(tidyverse)
 # need to load appropriate species database
 library(org.Dm.eg.db)
 library(qs)
-library(rrvgo)
+# library(rrvgo)
 library(ggrepel)
 library(furrr)
 library(simplifyEnrichment)
@@ -79,6 +79,7 @@ treemapPlot(rrvgo_filt_foldenrichment$BP$reducedTerms)
 treemapPlot(rrvgo_filt_bonferroni$BP$reducedTerms)
 
 ## Try simplify enrichment
+gl_go <- read_csv("./output/analysis/gl_go-enrichment.csv")
 se_cutoffs <- list(c(0.01, 2), c(0.01, 1.5), c(0.01, 2)) %>%
   set_names(c("BP", "MF", "CC"))
 
@@ -111,6 +112,35 @@ pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/bp.pdf", width = 13 * 0.3937,
 plot
 dev.off()
 
+bp_clusters_summary <- bp_clusters %>%
+  mutate(id = str_replace(id, ":", "")) %>%
+  group_by(cluster) %>%
+  summarise(go_count = n(),
+    go_ids = list(id)) %>%
+  filter(go_count >= 10) %>%
+  arrange(desc(go_count)) 
+
+bp_clusters_go_ids <- bp_clusters_summary$go_ids %>%
+  set_names(bp_clusters_summary$cluster)
+
+bp_clusters_go_ids %>%
+  map(function(clusters){
+    clusters %>%
+      map(function(id){
+        df <- id_interest %>%
+          filter(str_detect(go_biological_process, id))
+        if(nrow(df) == 0){
+          NA_character_
+        } else {
+          pull(df, dmel_gene_id)
+        }
+      }) %>% 
+      purrr::reduce(append) %>%
+      unique() %>%
+      .[!is.na(.)]
+  }) %>%
+  map(~ length(.x))
+
 ## MF
 mf_clusters <- simplifyGO(se_simmat$MF, control = list(cutoff = 0.9), plot = FALSE)
 plot <- ht_clusters(se_simmat$MF, mf_clusters$cluster, 
@@ -127,6 +157,35 @@ pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/mf.pdf", width = 13 * 0.3937,
 plot
 dev.off()
 
+mf_clusters_summary <- mf_clusters %>%
+  mutate(id = str_replace(id, ":", "")) %>%
+  group_by(cluster) %>%
+  summarise(go_count = n(),
+    go_ids = list(id)) %>%
+  filter(go_count >= 5) %>%
+  arrange(desc(go_count)) 
+
+mf_clusters_go_ids <- mf_clusters_summary$go_ids %>%
+  set_names(mf_clusters_summary$cluster)
+
+mf_clusters_go_ids %>%
+  map(function(clusters){
+    clusters %>%
+      map(function(id){
+        df <- id_interest %>%
+          filter(str_detect(go_molecular_function, id))
+        if(nrow(df) == 0){
+          NA_character_
+        } else {
+          pull(df, dmel_gene_id)
+        }
+      }) %>% 
+      purrr::reduce(append) %>%
+      unique() %>%
+      .[!is.na(.)]
+  }) %>%
+  map(~ length(.x))
+
 ## CC
 cc_clusters <- simplifyGO(se_simmat$CC, control = list(cutoff = 0.9), plot = FALSE)
 plot <- ht_clusters(se_simmat$CC, cc_clusters$cluster, 
@@ -142,6 +201,35 @@ plot <- ht_clusters(se_simmat$CC, cc_clusters$cluster,
 pdf("/Users/sjoh4548/OneDrive - Nexus365/JL_upload/cc.pdf", width = 13 * 0.3937, height = 6.3 * 0.3937)
 plot
 dev.off()
+
+cc_clusters_summary <- cc_clusters %>%
+  mutate(id = str_replace(id, ":", "")) %>%
+  group_by(cluster) %>%
+  summarise(go_count = n(),
+    go_ids = list(id)) %>%
+  filter(go_count >= 10) %>%
+  arrange(desc(go_count)) 
+
+cc_clusters_go_ids <- cc_clusters_summary$go_ids %>%
+  set_names(cc_clusters_summary$cluster)
+
+cc_clusters_go_ids %>%
+  map(function(clusters){
+    clusters %>%
+      map(function(id){
+        df <- id_interest %>%
+          filter(str_detect(go_cellular_component, id))
+        if(nrow(df) == 0){
+          NA_character_
+        } else {
+          pull(df, dmel_gene_id)
+        }
+      }) %>% 
+      purrr::reduce(append) %>%
+      unique() %>%
+      .[!is.na(.)]
+  }) %>%
+  map(~ length(.x))
 
 
 
@@ -162,6 +250,7 @@ bp_clusters %>%
 # ----- Plotting
 
 gl_go %>%
+  mutate(ontology = fct_relevel(ontology, c("BP", "MF", "CC"))) %>%
   mutate(put_label = if_else(
     log2(foldEnrichment) > 1.5 & bonferroni < 0.01,
     Term,
