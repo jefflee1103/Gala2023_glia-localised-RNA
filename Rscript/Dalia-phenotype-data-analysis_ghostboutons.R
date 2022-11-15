@@ -9,9 +9,6 @@ library(furrr)
 library(colorspace)
 plan(multisession, workers = 4)
 
-## Genes to test 
-goi <- c("lac", "Pdi", "Gs2", "nrv2", "alpha-Cat", "ATP-alpha", "nrg", "shot", "Vha55", "flo2")
-
 # ----- Kstim ghost bouton counts 
 
 ## Helper function
@@ -47,8 +44,8 @@ get_summary_results <- function(list_of_df) {
 }
 
 ## Genes with single repilicates
-kstim_singles_raw <- list.files(
-    "./data/Dalias_Data/Functional_data_prediction_paper/KStim_all_genes_ghost_boutons_analysis/",
+kstim_raw <- list.files(
+    "./data/Dalias_Data/Functional_data_prediction_paper/KStim_all_genes_ghost_boutons_analysis",
     pattern = "*.csv",
     full.names = TRUE
   ) %>%
@@ -63,41 +60,25 @@ kstim_singles_raw <- list.files(
          ))
          )
   
-kstim_singles_statistics <- get_summary_results(kstim_singles_raw) 
+kstim_statistics <- get_summary_results(kstim_raw) 
 
-## Genes with multiple replicates
-kstim_multiples_raw <- list.files(
-    "./data/Dalias_Data/Functional_data_prediction_paper/KStim_triplicates_ghost_boutons_analysis/",
-    pattern = "*.csv",
-    full.names = TRUE
-  ) %>%
-  set_names() %>%
-  map(read_csv) %>%
-  map(~ dplyr::select(.x, c(Set, Segment, contains("NMJ"), Boutons)) %>%
-         setNames(c("condition", "larval_segment", "nmj_number", "bouton_count")) %>%
-         filter(!str_detect(condition, "CG"))
-         )
-  
-kstim_multiples_statistics <- get_summary_results(kstim_multiples_raw)
+## Create summary dataframe
+kstim_wilcox_df <- kstim_statistics %>%
+  map_dfr(~ pluck(.x, "Wilcox")) %>%
+  filter(!str_detect(condition, "CG")) %>%
+  filter(condition != "cold")
 
-## Combine singles and multiples 
-kstim_wilcox_df <- bind_rows(
-  map_dfr(kstim_singles_statistics, ~ pluck(.x, "Wilcox")),
-  map_dfr(kstim_multiples_statistics, ~ pluck(.x, "Wilcox"))
-)
 
-kstim_ttest_df <- bind_rows(
-  map_dfr(kstim_singles_statistics, ~ pluck(.x, "t-test")),
-  map_dfr(kstim_multiples_statistics, ~ pluck(.x, "t-test"))
-)
-
-kstim_full_df <- bind_rows(
-  map_dfr(kstim_singles_statistics, ~ pluck(.x, "full_df")),
-  map_dfr(kstim_multiples_statistics, ~ pluck(.x, "full_df"))
+## Correct gene names
+t2g <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv")
+id_change <- tibble(
+  input = kstim_wilcox_df$condition,
+  ens99_name = c("alpha-Cat", "Gs2", "Lac", "Pdi", "Atpalpha", "Flo2", "Nrg", "nrv2", "shot", "Vha55")
 )
 
 ## 
 df_for_plotting <- kstim_wilcox_df %>%
+  left_join(id_change, by = c("condition" = "input")) %>%
   mutate(p_legend = case_when(
     p < 0.0001 ~ "**** < 0.0001",
     p < 0.001 ~ "*** < 0.001",
@@ -108,18 +89,18 @@ df_for_plotting <- kstim_wilcox_df %>%
   mutate(log2foldchange = log2(foldchange)) %>%
   mutate(p_label = str_c("p=", signif(p, digits = 2))) %>%
   mutate(p_label_pos = case_when(
-    log2foldchange >= 0 ~ log2foldchange + 0.06,
-    log2foldchange < 0 ~ log2foldchange - 0.06
+    log2foldchange >= 0 ~ log2foldchange + 0.08,
+    log2foldchange < 0 ~ log2foldchange - 0.08
   ))
 
 ##
-colours <- c(sequential_hcl(n = 5, palette = "Inferno", rev = FALSE)[3:4], "gray70")
+colours <- c(sequential_hcl(n = 5, palette = "Inferno", rev = FALSE)[4], "gray70")
 
 df_for_plotting %>%
-  ggplot(aes(x = reorder(condition, -foldchange), y = log2foldchange, fill = p_legend)) + 
+  ggplot(aes(x = reorder(ens99_name, -foldchange), y = log2foldchange, fill = p_legend)) + 
   geom_col(width = 0.6) +
   geom_hline(yintercept = 0, colour = "gray20", size = 0.1) +
-  geom_text(aes(y = p_label_pos, label = p_label), cex = 1.2) +
+  geom_text(aes(y = p_label_pos, label = p_label), cex = 1.4) +
   coord_cartesian(ylim = c(-1.8, 1.7)) +
   labs(
     x = "", 
@@ -127,15 +108,16 @@ df_for_plotting %>%
     fill = "P-value"
   ) + 
   scale_fill_manual(values = colours) +
-  theme_bw(base_size = 6) + 
+  theme_bw(base_size = 7) + 
   theme(
-    legend.text = element_text(size = 4),
-    legend.title = element_text(size = 5)
+    legend.text = element_text(size = 5),
+    legend.title = element_text(size = 5),
+    axis.text.x = element_text(size = 5)
     ) +
   guides(fill = guide_legend(keywidth = 0.3, keyheight = 0.3))
 
 ggsave("./output/graphics/phenotype_boutons_plot_kstim.pdf", 
-       width = 10 * 0.3937, height = 5.5 * 0.38937,
+       width = 10.2 * 0.3937, height = 5.5 * 0.38937,
        device = cairo_pdf)
 
 ##
@@ -178,11 +160,6 @@ ggsave("./output/graphics/phenotype_boutons_plot_kstim_with_errorbar.pdf",
        device = cairo_pdf)
 
 
-## 
-kstim_full_df %>%
-  ggplot(aes(x = condition, y = bouton_count)) +
-  geom_jitter() +
-  theme_classic()
 
 
 
