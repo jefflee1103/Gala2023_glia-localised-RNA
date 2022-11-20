@@ -210,6 +210,6 @@ ggsave("./output/graphics/phenotype_area_plot_kstim.pdf",
 dev_plot / kstim_plot 
 
 ggsave("./output/graphics/phenotype_area_plot_both-dev-kstim.pdf", 
-       width = 11 * 0.3937, height = 9 * 0.38937,
+       width = 11 * 0.3937, height = 9 * 0.3937,
        device = cairo_pdf)
 
