@@ -47,7 +47,7 @@ dev_area_statistics <- dev_area_raw %>%
         dev_area_statistics <- dev_area_cleaned %>%
             group_by(type) %>%
             t_test(value ~ condition, ref.group = "Control") %>%
-            dplyr::select(type, "condition" = group2, statistic, p) %>%
+            dplyr::select(type, "condition" = group2, statistic, p, starts_with("n")) %>%
             left_join(dev_area_foldchange, by = c("type", "condition"))
     })
 
@@ -144,7 +144,7 @@ kstim_area_statistics <- kstim_area_raw %>%
         kstim_area_statistics <- kstim_area_cleaned %>%
             group_by(type) %>%
             t_test(value ~ condition, ref.group = "Control") %>%
-            dplyr::select(type, "condition" = group2, statistic, p) %>%
+            dplyr::select(type, "condition" = group2, statistic, p, starts_with("n")) %>%
             left_join(kstim_area_foldchange, by = c("type", "condition"))
     }) %>%
     filter(!str_detect(condition, "CG")) %>%

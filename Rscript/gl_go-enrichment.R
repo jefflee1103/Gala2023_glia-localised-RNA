@@ -13,6 +13,7 @@ library(ggrepel)
 library(furrr)
 library(simplifyEnrichment)
 library(patchwork)
+library(ggview)
 plan(multisession, workers = 4)
 
 source("./Rscript/runTopGO.R")
@@ -256,17 +257,22 @@ gl_go %>%
     Term,
     NA_character_)) %>% 
   ggplot(aes(x = log2(foldEnrichment), y = -log(bonferroni), colour = ontology)) +
-  geom_point(alpha = 0.5, stroke = 0, size =3) +
+  geom_point(alpha = 0.5, stroke = 0, size = 1.5) +
   geom_text_repel(aes(label = put_label), max.overlaps = 10,
-    colour = "gray50", cex = 2) +
-  labs(title = "GO enrichment: 1700 vs full genome",
-    subtitle = "Half-volcano plot",
-    x = "log2FoldChange", y = "Adjusted p-value (-log10)") +
+    colour = "gray50", cex = 1.5) +
+  labs(title = "Gene Ontology enrichment: 1700 glia-localised transcripts vs full genome",
+    subtitle = "Half-volcano plot - Top 20 (foldchange) terms are labelled",
+    x = "log2FoldChange", y = "Adjusted p-value (-log10)", 
+    colour = "GO ontology") +
   coord_cartesian(xlim = c(0, 3.5)) + 
-  theme_light() +
+  theme_light(base_size = 6) +
   facet_wrap(~ ontology)
 
-ggsave("./output/graphics/go-enrichment_volcano.pdf", width = 20, height = 14)
+ggview(width = 18, height = 15, units = "cm")
+
+ggsave("./output/graphics/go-enrichment_volcano.pdf", 
+       width = 18, height = 12, units = "cm",
+       useDingbats = FALSE)
 
 
 

@@ -28,7 +28,7 @@ get_summary_results <- function(list_of_df) {
     kstim_statistics_wilcox <- .x %>%
       wilcox_test(bouton_count ~ condition, ref.group = "Control") %>%
       add_significance() %>%
-      dplyr::select("condition" = group2, statistic, p) %>%
+      dplyr::select("condition" = group2, statistic, p, starts_with("n")) %>%
       left_join(kstim_foldchange, by = "condition")
     
     kstim_statistics_ttest <- .x %>%
