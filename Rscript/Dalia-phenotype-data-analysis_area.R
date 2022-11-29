@@ -72,6 +72,8 @@ dev_area_statistics_for_plotting <- dev_area_statistics %>%
   )) %>%
   left_join(id_change, by = c("condition" = "input"))
 
+write_csv(dev_area_statistics_for_plotting, "./output/analysis/phenotype-analysis_output/dev_area_summary_statistics_tidy.csv")
+
 colours <- c(sequential_hcl(n = 7, palette = "Inferno", rev = FALSE)[3:5], "gray70")
 gene_order_dev <- dev_area_statistics_for_plotting %>%
   filter(type == "Glial area") %>%
@@ -170,6 +172,9 @@ kstim_area_statistics_for_plotting <- kstim_area_statistics %>%
     type == "ratio_Glia_Neurite" ~ "Ratio Glial/Neurite"
   )) %>%
   left_join(id_change_kstim, by = c("condition" = "input"))
+
+write_csv(kstim_area_statistics_for_plotting, "./output/analysis/phenotype-analysis_output/kstim_area_summary_statistics_tidy.csv")
+
 
 colours_kstim <- c(sequential_hcl(n = 7, palette = "Inferno", rev = FALSE)[c(3, 5, 6)], "gray70")
 

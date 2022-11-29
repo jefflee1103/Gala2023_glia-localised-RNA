@@ -68,7 +68,6 @@ kstim_wilcox_df <- kstim_statistics %>%
   filter(!str_detect(condition, "CG")) %>%
   filter(condition != "cold")
 
-
 ## Correct gene names
 t2g <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv")
 id_change <- tibble(
@@ -92,6 +91,8 @@ df_for_plotting <- kstim_wilcox_df %>%
     log2foldchange >= 0 ~ log2foldchange + 0.08,
     log2foldchange < 0 ~ log2foldchange - 0.08
   ))
+
+write_csv(df_for_plotting, "./output/analysis/phenotype-analysis_output/kstim_boutons_summary_statistics_tidy.csv")
 
 ##
 colours <- c(sequential_hcl(n = 5, palette = "Inferno", rev = FALSE)[4], "gray70")
