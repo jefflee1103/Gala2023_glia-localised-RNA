@@ -135,7 +135,7 @@ plottingdf %>%
   geom_text_repel(aes(label = put_label), 
     max.overlaps = 100, hjust = 0,
     cex = 1, colour = "gray40", ) +
-  geom_hline(yintercept = -log(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
   labs(
     x = "log2FoldChange",

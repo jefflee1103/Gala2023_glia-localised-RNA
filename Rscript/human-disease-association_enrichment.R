@@ -130,12 +130,12 @@ write_tsv(gl_disease_gene_list, "./output/analysis/gl_disease_gene_list_top-pval
 gl_disease_statistics %>%
   filter(log2foldchange != -Inf) %>%
   mutate(put_label = if_else(adj_pvalue < 0.001 & log2foldchange >= 1.8, disease, NA_character_)) %>%
-  ggplot(aes(x = log2foldchange, y = -log(adj_pvalue), colour = count_in_gl)) +
+  ggplot(aes(x = log2foldchange, y = -log10(adj_pvalue), colour = count_in_gl)) +
   geom_point(alpha = 1, stroke = 0, size = 1.5) +
   geom_text_repel(aes(label = put_label), 
     max.overlaps = 100, hjust = 0,
     cex = 0.8, colour = "gray40", segment.size = 0.1) +
-  geom_hline(yintercept = -log(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
   labs(
     # title = "Enrichment of disease-associated genes within glial protrusion-localised transcripts",
