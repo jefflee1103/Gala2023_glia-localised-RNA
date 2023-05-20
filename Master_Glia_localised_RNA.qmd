@@ -618,49 +618,6 @@ write_tsv(df_with_mimic, './glia-localised-rna.txt')
 \newpage
 
 
-# INCORPORATE IMP SYP TARGETS 
-
-```{r}
-library(tidyverse)
-library(qs)
-library(skimr)
-```
-
-## Insertect with iCLIP summary dataset 
-
-```{r}
-## Get dataframes 
-gl <- qread('./output/glia-localised-rna_mimic-incorporated.qs')
-lclip_summary <- qread('~/Documents/LCLIP/analysis_data/lclip_summary.qs') # LCLIP folder
-
-## Map Imp and Syp targets to the glia-localised RNA df 
-lclip_gene_id <- lclip_summary %>% map(~ pull(.x, gene_id))
-gl_is <- gl %>%
-  mutate(L1_Imp = if_else(dmel_gene_id %in% lclip_gene_id$L1_Imp, TRUE, FALSE)) %>%
-  mutate(L2_Imp = if_else(dmel_gene_id %in% lclip_gene_id$L2_Imp, TRUE, FALSE)) %>%
-  mutate(L2_Syp = if_else(dmel_gene_id %in% lclip_gene_id$L2_Syp, TRUE, FALSE)) %>%
-  mutate(L3_Syp = if_else(dmel_gene_id %in% lclip_gene_id$L3_Syp, TRUE, FALSE)) %>%
-  mutate(Imp_target = if_else(L1_Imp == TRUE | L2_Imp == TRUE, TRUE, FALSE)) %>%
-  mutate(Syp_target = if_else(L2_Syp == TRUE | L3_Syp == TRUE, TRUE, FALSE)) %>%
-  mutate(Imp_and_Syp_target = if_else(Imp_target == TRUE & Syp_target == TRUE, TRUE, FALSE))
-
-gl_is %>%
-  filter(rna_in_protrusion >= 8 ) %>%
-  skim()
-
-qsave(gl_is, './output/glia-localised-rna_istarget-incorporated.qs')
-```
-
-## Update central df
-
-```{r}
-write_tsv(gl_is, './glia-localised-rna.txt')
-```
-
-
-\newpage
-
-
 # INCORPORATE HUMAN DISEASE ASSOCIATIONS
 
   Incorporate human disease associations with the glial localised transcripts
@@ -699,7 +656,8 @@ find_disease_terms(fb_disease, "lewy")
 find_disease_genes(fb_disease, "Huntington's disease")
 
 ## Get neurodegen genes 
-search_strings <- c("Parkinson's", "Alzheimer", "fragile X syndrome", "Huntington's disease", "amyotrophic", "spinal muscular atrophy") %>% 
+search_strings <- c("Parkinson's", "Alzheimer", "fragile X syndrome", "Huntington's disease", "amyotrophic", "spinal muscular atrophy") 
+search_strings <- search_strings %>%
   c(paste(search_strings, collapse = "|")) %>%
   set_names(c("Parkinson", "Alzheimer", "FXS", "Huntington", "ALS", "SMA", "Neurodegenerative_total"))
 
@@ -710,7 +668,7 @@ qsave(nd_genes_list, "./data/Flybase/neurodegenerative_disease_list.qs")
 nd_genes_list <- qread("./data/Flybase/neurodegenerative_disease_list.qs")
 
 ## Incorporate into the main dataframe
-gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
+gl_is <- qread('./output/glia-localised-rna_mimic-incorporated.qs')
 nd_genes_int <- nd_genes_list %>%
   imap(~{
     gl_is <- gl_is %>%
@@ -741,41 +699,6 @@ write_tsv(gl_nd, './glia-localised-rna.txt')
 
 
 # TEMP PLAYGROUND
-
-```{r}
-library(tidyverse)
-library(qs)
-library(skimr)
-library(UpSetR)
-
-gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
-
-id_interest <- gl_nd %>%
-  filter(rna_in_protrusion >= 8) %>%
-  filter(`subperineurial glial cell` == TRUE | 
-           `perineurial glial sheath` == TRUE |
-           `adult brain perineurial glial cell` == TRUE |
-           `ensheathing glial cell` == TRUE)
-
-id_interest %>% skim()
-
-id_interest %>%
-  dplyr::select(dmel_gene_id, dmel_gene_name, sfari_dmel, Imp_target, Syp_target, Imp_and_Syp_target) %>%
-  write_csv('~/Desktop/1700-glia-localised-rna_ImpSyptargets.csv')
-
-library(UpSetR)
-movies <- read.csv( system.file("extdata", "movies.csv", package = "UpSetR"), header=T, sep=";" )
-
-upset_df <- id_interest %>%
-  dplyr::select(Imp_target, Syp_target) %>%
-  mutate_all(~ if_else(.x == TRUE, 1, 0))
-
-upset_df %>%
-  as.data.frame() %>%
-  upset(empty.intersections = "on")
-
-```
-
 
 ```{r}
 gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
@@ -838,13 +761,6 @@ tmp <- id_interest %>%
     FALSE
   ))
 
-
-colnames(tmp)
-
-
-tmp %>%
-  dplyr::select(dmel_gene_id, dmel_gene_name, mmus_gene_symbols, translation_present, transcript_enriched, translation_enriched, mimic_or_crimic, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component, synapse_localised, synapse_organization, synaptic_signalling, actin_microtubule_related, RNA_binding, ribosome_associated, locomotorly_regulation, molecular_motor_activity, Imp_target, Syp_target) %>%
-  write_csv('~/Desktop/1700_localised_transcript_with_annotations.csv')
 
 
 ```

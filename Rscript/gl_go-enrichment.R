@@ -276,3 +276,87 @@ ggsave("./output/graphics/go-enrichment_volcano.pdf",
 
 
 
+######################################################################
+# With clusterprofiler
+######################################################################
+library(tidyverse)
+library(qs)
+library(patchwork)
+library(org.Dm.eg.db)
+library(furrr)
+library(rstatix)
+library(colorspace)
+plan(multisession, workers = 4)
+
+library(clusterProfiler)
+library(enrichplot)
+
+
+# Get gene lists
+
+## Target genes
+gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
+id_interest <- gl_nd %>%
+  filter(rna_in_protrusion >= 8) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+targetGenes <- id_interest$dmel_gene_id
+
+## Background genes
+ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct()
+
+backgroundGenes_ens99 <- ens99$gene_id
+
+backgroundGenes_mmus_convertible <- gl_nd$dmel_gene_id %>% unique()
+
+# Cluster profilier
+ontology <- c("BP", "MF", "CC") %>% set_names()
+
+enrichgo_ens99 <- ontology %>%
+  map(~ enrichGO(
+    gene = targetGenes,
+    universe = backgroundGenes_ens99,
+    OrgDb = org.Dm.eg.db,
+    keyType = "ENSEMBL",
+    ont = .x,
+    pvalueCutoff = 0.01,
+    readable = TRUE
+  ) %>% pairwise_termsim()) 
+
+enrichgo_mmusdmel <- ontology %>%
+  map(~ enrichGO(
+    gene = targetGenes,
+    universe = backgroundGenes_mmus_convertible,
+    OrgDb = org.Dm.eg.db,
+    keyType = "ENSEMBL",
+    ont = .x,
+    pvalueCutoff = 0.01,
+    readable = TRUE
+  ) %>% pairwise_termsim()) 
+
+
+enrichgo_ens99$BP@result %>% View()
+
+enrichgo_ens99$BP@result %>%
+  filter(Description == "autophagy") %>%
+  pull(geneID) %>%
+  str_split_1(pattern = "/") %>% sort()
+
+enrichgo_ens99$BP %>%
+  emapplot()
+
+cnetplot(enrichgo_ens99$MF, showCategory = 15, cex_label_category = 1.5, cex_category = 2, cex_label_gene = 0.8, layout = "kk")
+ggsave("~/Desktop/1700_MF_ens99.pdf", height = 40, width = 40)
+
+cnetplot(enrichgo_mmusdmel$BP, showCategory = 20, cex_label_category = 1.5, cex_category = 2, cex_label_gene = 0.8, layout = "kk")
+ggsave("~/Desktop/1700_BP_mmusdmel.pdf", height = 40, width = 40)
+
+goplot(enrichgo_mmusdmel$BP)
+
+
+goplot(ego)
+
