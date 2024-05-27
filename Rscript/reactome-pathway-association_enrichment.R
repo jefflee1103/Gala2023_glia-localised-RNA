@@ -48,7 +48,6 @@ dismodel_ens99 <- bind_rows(resolve_noconflict, resolve_yesconflict_verdict) %>%
   dplyr::select(-gene_symbol, -ens99_gene_id) %>%
   dplyr::select(gene_id, gene_name, everything())
 
-
 dismodel_ens99 %>%
   group_by(pathways_name_level1) %>%
   summarise(count = n()) -> tmp

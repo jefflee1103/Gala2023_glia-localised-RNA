@@ -1,0 +1,28 @@
+GO_entry,GO_group,gene_count,mouse_genes,human_genes
+peroxisome,cellular_component,82,Sod1 | Acox1 | Fis1 | Acsl1 | Dnm1l | Eci2 | Trim37 | Mvd | Tkt | Acsl6 | Ephx2 | Fndc5 | Acot8 | Pex13 | Pex5 | Atad1 | Hacl1 | Mpv17l | Pex3 | Crot | Dhrs4 | Pex19 | Pxmp4 | Aldh3a2 | Rida | Pex7 | Pex1 | Pex6 | Slc25a17 | Akap11 | Idh2 | Pex11b | Acsl4 | Pex16 | Hsdl2 | Scp2 | Mff | Cat | Pex14 | Isoc1 | Gstk1 | Hmgcl | Abcd3 | Hsd17b4 | Pmvk | Crat | Syt7 | Vim | Gbf1 | Prdx5 | Far1 | Phyh | Idh1 | Acbd5 | Gnpat | Tmem35a | Pnpla8 | Nudt7 | Acsl3 | Mvk | Lonp2 | Mul1 | Decr2 | Tmem135 | Acaa1a | Nudt19 | Pik3c3 | Pex2 | Myo5a | Mlycd | Pla2g16 | Fdps | Abcd2 | Marc2 | Acad11 | Ide | Marf1 | Idi1 | Vwa8 | Mpv17 | Ech1 | Serhl,SOD1 | ACOX1 | FIS1 | ACSL1 | DNM1L | ECI2 | TRIM37 | MVD | TKT | AC034228.4 | ACSL6 | EPHX2 | FNDC5 | ACOT8 | PEX13 | PEX5 | ATAD1 | HACL1 | AC140504.1 | MPV17L | PEX3 | CROT | DHRS4 | DHRS4L2 | PEX19 | PXMP4 | ALDH3A2 | RIDA | PEX7 | PEX1 | PEX6 | SLC25A17 | AKAP11 | IDH2 | PEX11B | ACSL4 | PEX16 | HSDL2 | SCP2 | MFF | CAT | PEX14 | ISOC1 | GSTK1 | HMGCL | ABCD3 | HSD17B4 | PMVK | CRAT | SYT7 | VIM | GBF1 | PRDX5 | FAR1 | PHYH | IDH1 | ACBD5 | GNPAT | TMEM35A | PNPLA8 | NUDT7 | ACSL3 | MVK | LONP2 | MUL1 | DECR2 | TMEM135 | ACAA1 | NUDT19 | PIK3C3 | PEX2 | MYO5A | MLYCD | PLA2G16 | FDPS | ABCD2 | MARC2 | ACAD11 | IDE | MARF1 | IDI1 | VWA8 | MPV17 | ECH1 | SERHL2
+peroxisome organization,biological_process,15,Acot8 | Pex5 | Pex3 | Pex19 | Pex7 | Pex1 | Pex6 | Pex11b | Pex16 | Scp2 | Pex14 | Abcd3 | Tmem135 | Pex2 | Pla2g16,ACOT8 | PEX5 | PEX3 | PEX19 | PEX7 | PEX1 | PEX6 | PEX11B | PEX16 | SCP2 | PEX14 | ABCD3 | TMEM135 | PEX2 | PLA2G16
+protein import into peroxisome matrix,biological_process,8,Pex5 | Pex7 | Pex1 | Pex6 | Pex16 | Pex14 | Lonp2 | Pex2,PEX5 | PEX7 | PEX1 | PEX6 | PEX16 | PEX14 | LONP2 | PEX2
+protein targeting to peroxisome,biological_process,8,Pex5 | Pex19 | Pex7 | Pex1 | Pex6 | Pex16 | Zfand6 | Lonp2,PEX5 | PEX19 | PEX7 | PEX1 | PEX6 | PEX16 | ZFAND6 | LONP2
+peroxisome fission,biological_process,7,Acox1 | Fis1 | Dnm1l | Acot8 | Pex19 | Pex11b | Mff,ACOX1 | FIS1 | DNM1L | ACOT8 | PEX19 | PEX11B | MFF
+peroxisome proliferator activated receptor binding,molecular_function,6,Prmt2 | Mdm2 | Med1 | Dut | Hmga1 | Rpl11,PRMT2 | MDM2 | MED1 | DUT | HMGA1 | RPL11
+autophagy of peroxisome,biological_process,5,Rb1cc1 | Acbd5 | Pik3r4 | Pik3c3 | Trappc8,RB1CC1 | ACBD5 | PIK3R4 | PIK3C3 | TRAPPC8
+positive regulation of peroxisome proliferator activated receptor signaling pathway,biological_process,5,Gps2 | Stard10 | Lmo3 | Fabp5 | Cited2,GPS2 | STARD10 | LMO3 | FABP5 | CITED2
+peroxisome proliferator activated receptor signaling pathway,biological_process,4,Fam120b | Med1 | Pdk3 | Actn4,FAM120B | MED1 | PDK3 | ACTN4
+"protein import into peroxisome matrix, docking",biological_process,4,Pex13 | Pex5 | Pex14 | Pex5l,PEX13 | PEX5 | PEX14 | PEX5L
+protein import into peroxisome membrane,biological_process,4,Pex5 | Pex3 | Pex19 | Pex16,PEX5 | PEX3 | PEX19 | PEX16
+peroxisome membrane biogenesis,biological_process,3,Pex3 | Pex19 | Pex16,PEX3 | PEX19 | PEX16
+peroxisome targeting sequence binding,molecular_function,3,Pex13 | Pex5 | Pex5l,PEX13 | PEX5 | PEX5L
+"protein import into peroxisome matrix, translocation",biological_process,3,Pex5 | Pex6 | Pex14,PEX5 | PEX6 | PEX14
+microtubule-based peroxisome localization,biological_process,2,Pex13 | Pex1,PEX13 | PEX1
+peroxisome matrix targeting signal-1 binding,molecular_function,2,Pex5 | Pex5l,PEX5 | PEX5L
+regulation of peroxisome organization,biological_process,2,Dnm1l | Mff,DNM1L | MFF
+ER-dependent peroxisome localization,biological_process,1,Pex16,PEX16
+ER-dependent peroxisome organization,biological_process,1,Pex16,PEX16
+establishment of protein localization to peroxisome,biological_process,1,Pex19,PEX19
+long-chain fatty acid import into peroxisome,biological_process,1,Abcd3,ABCD3
+negative regulation of peroxisome proliferator activated receptor signaling pathway,biological_process,1,Cyp2j6,CYP2C8
+peroxisome matrix targeting signal-2 binding,molecular_function,1,Pex7,PEX7
+peroxisome membrane class-1 targeting sequence binding,molecular_function,1,Pex19,PEX19
+peroxisome transport along microtubule,biological_process,1,Pex14,PEX14
+"protein import into peroxisome matrix, substrate release",biological_process,1,Pex14,PEX14
+regulation of peroxisome size,biological_process,1,Pex11b,PEX11B

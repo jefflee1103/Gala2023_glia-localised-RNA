@@ -152,55 +152,56 @@ for (i in 1:(length(quantiles_vector) - 1)){
 }
 quantile_range_df <- purrr::reduce(quantile_range_list, bind_rows)
 
-quantile_range_df %>%
-  ggplot(aes(x = as.factor(quantile), y = percentage_protrusion, colour = as.factor(quantile))) +
-  geom_boxplot(width = 0.5) + 
-  geom_jitter(colour = "black", position = position_jitter(width = 0.2)) +
-  labs(title = "No correlation between expression level\nand protrusion localisation",
-       subtitle = "",
-       x = "TPM quantiles",
-       y = "% localised transcripts"
-       ) + 
-  coord_cartesian(ylim = c(0, 100)) + 
-  theme_classic(base_size = 17) +
-  theme(legend.position = "none")
+# quantile_range_df %>%
+#   filter(compartments == 2) %>%
+#   ggplot(aes(x = as.factor(quantile), y = percentage_protrusion, colour = as.factor(quantile))) +
+#   geom_boxplot(width = 0.5) + 
+#   geom_jitter(colour = "black", position = position_jitter(width = 0.2)) +
+#   labs(title = "No correlation between expression level\nand protrusion localisation",
+#        subtitle = "",
+#        x = "TPM quantiles",
+#        y = "% localised transcripts"
+#        ) + 
+#   coord_cartesian(ylim = c(0, 100)) + 
+#   theme_classic(base_size = 17) +
+#   theme(legend.position = "none")
 
 
-
-
-
-pct_table_list <- df_long_tidy %>%
-  filter(TPM > 0) %>%
-  pull(TPM) %>%
-  log10() %>% 
-  quantile() %>%
-  as.list() %>%
-  map_dfr(~{
-    get_pct_table(cutoff = 10^(.x))
-  }, .id = "quantiles")
-  
-
-pct_table_list %>%
-  group_by(quantiles) %>%
-  summarise(mean_localisation_pct = mean(percentage_protrusion)) %>%
-  arrange(quantiles)
-
-
-
-
-quantile(log10(df_long_tidy$TPM + 1))
-
-
-
-
-
-
-
-df_long$library %>% unique()
-
-
-
-View(df_long)
+# 
+# 
+# 
+# pct_table_list <- df_long_tidy %>%
+#   filter(TPM > 0) %>%
+#   pull(TPM) %>%
+#   log10() %>% 
+#   quantile() %>%
+#   as.list() %>%
+#   map_dfr(~{
+#     get_pct_table(cutoff = 10^(.x))
+#   }, .id = "quantiles")
+#   
+# 
+# pct_table_list %>%
+#   group_by(quantiles) %>%
+#   summarise(mean_localisation_pct = mean(percentage_protrusion)) %>%
+#   arrange(quantiles)
+# 
+# 
+# 
+# 
+# quantile(log10(df_long_tidy$TPM + 1))
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# df_long$library %>% unique()
+# 
+# 
+# 
+# View(df_long)
 
 
 

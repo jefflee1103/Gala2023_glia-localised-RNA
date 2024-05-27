@@ -337,7 +337,7 @@ all_glia_cell_anno %>%
 ## Gene counts per glia type
 all_glia_cell_anno %>%
   ggplot(aes(x = annotation, y = n_genes, colour = annotation)) +
-  geom_quasirandom(size = 1, alpha = 0.3, stroke = 0) +
+  ggbeeswarm::geom_quasirandom(size = 1, alpha = 0.3, stroke = 0) +
   scale_colour_viridis_d() +
   labs(title = "Number of genes detected per cell",
        subtitle = "Fly cell atlas - single-nucleus RNA-seq",
@@ -346,7 +346,7 @@ all_glia_cell_anno %>%
   theme_gray(base_size = 12) +
   theme(legend.position = "none") +
   coord_flip() +
-  geom_quasirandom(aes(x = "TOTAL", y = n_genes),
+  ggbeeswarm::geom_quasirandom(aes(x = "TOTAL", y = n_genes),
                    size = 1, alpha = 0.3)
 
 
@@ -359,9 +359,9 @@ all_glia_cell_anno %>%
        subtitle = "Fly cell atlas - single-nucleus RNA-seq",
        colour = "") + 
   geom_point(alpha = 0.8, size = 1, stroke = 0) +
-  scale_colour_viridis_d() +
+  # scale_colour_viridis_d() +
   theme_void(base_size = 12) +
-  theme(legend.position = "none")
+  theme(legend.position = "right")
 
 ```
 
@@ -387,7 +387,7 @@ plot_gene_tsne <- function(gene, palette, limit_counts){
     theme(legend.position = "bottom")
 }
 
-plot_gene_tsne("nrv2", "red", 3)
+plot_gene_tsne("alrm", "red", 3)
 
 # septate_junction_gene_names <- read.delim(pipe("pbpaste"), col.names = "genes") %>% pull(genes)
 # map(septate_junction_gene_names, ~
@@ -403,7 +403,7 @@ plot_gene_ridge <- function(gene){
   counts <- all_glia_dgem %>% filter(gene_name == gene)
   df <- left_join(all_glia_cell_anno, counts, by = "cell_id")
   ggplot(df, aes(x = log2(dgem + 1), y = annotation, fill = annotation)) + 
-    geom_density_ridges() + 
+    ggridges::geom_density_ridges() + 
     labs(title = paste0(gene, " expression in glial cell types"),
          subtitle = "Fly cell atlas - single-nucleus RNA-seq",
          x = "RNA expression: log2(CPM+1)", y = "") +
@@ -413,7 +413,7 @@ plot_gene_ridge <- function(gene){
     theme(legend.position = "none")
 }
 
-plot_gene_ridge("nrv2")
+plot_gene_ridge("alrm")
 ```
 
 ## Glial subtype summary
@@ -462,7 +462,7 @@ plot_gene_subtype("nrv2")
 
 glia_type_dgem_by_gene %>%
   group_by(glia_cell_type) %>%
-  summarise(n_transcriptome = sum(pct_exp_cell >= 5)) %>% ungroup() %>%
+  summarise(n_transcriptome = sum(pct_exp_cell >= 2.5)) %>% ungroup() %>%
   # filter(glia_cell_type != "Total") %>%
   ggplot(aes(x = glia_cell_type, y = n_transcriptome, fill = glia_cell_type)) + 
   geom_col(width = 0.7) + 
@@ -656,8 +656,7 @@ find_disease_terms(fb_disease, "lewy")
 find_disease_genes(fb_disease, "Huntington's disease")
 
 ## Get neurodegen genes 
-search_strings <- c("Parkinson's", "Alzheimer", "fragile X syndrome", "Huntington's disease", "amyotrophic", "spinal muscular atrophy") 
-search_strings <- search_strings %>%
+search_strings <- c("Parkinson's", "Alzheimer", "fragile X syndrome", "Huntington's disease", "amyotrophic", "spinal muscular atrophy") %>% 
   c(paste(search_strings, collapse = "|")) %>%
   set_names(c("Parkinson", "Alzheimer", "FXS", "Huntington", "ALS", "SMA", "Neurodegenerative_total"))
 
@@ -699,6 +698,41 @@ write_tsv(gl_nd, './glia-localised-rna.txt')
 
 
 # TEMP PLAYGROUND
+
+```{r}
+library(tidyverse)
+library(qs)
+library(skimr)
+library(UpSetR)
+
+gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
+
+id_interest <- gl_nd %>%
+  filter(rna_in_protrusion >= 8) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+id_interest %>% skim()
+
+id_interest %>%
+  dplyr::select(dmel_gene_id, dmel_gene_name, sfari_dmel, Imp_target, Syp_target, Imp_and_Syp_target) %>%
+  write_csv('~/Desktop/1700-glia-localised-rna_ImpSyptargets.csv')
+
+library(UpSetR)
+movies <- read.csv( system.file("extdata", "movies.csv", package = "UpSetR"), header=T, sep=";" )
+
+upset_df <- id_interest %>%
+  dplyr::select(Imp_target, Syp_target) %>%
+  mutate_all(~ if_else(.x == TRUE, 1, 0))
+
+upset_df %>%
+  as.data.frame() %>%
+  upset(empty.intersections = "on")
+
+```
+
 
 ```{r}
 gl_is <- qread('./output/glia-localised-rna_istarget-incorporated.qs')
@@ -761,6 +795,13 @@ tmp <- id_interest %>%
     FALSE
   ))
 
+
+colnames(tmp)
+
+
+tmp %>%
+  dplyr::select(dmel_gene_id, dmel_gene_name, mmus_gene_symbols, translation_present, transcript_enriched, translation_enriched, mimic_or_crimic, sfari_dmel, go_biological_process, go_molecular_function, go_cellular_component, synapse_localised, synapse_organization, synaptic_signalling, actin_microtubule_related, RNA_binding, ribosome_associated, locomotorly_regulation, molecular_motor_activity, Imp_target, Syp_target) %>%
+  write_csv('~/Desktop/1700_localised_transcript_with_annotations.csv')
 
 
 ```

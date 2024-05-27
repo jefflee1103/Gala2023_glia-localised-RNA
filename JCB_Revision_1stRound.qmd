@@ -1,0 +1,1697 @@
+---
+title: "JCB_Revision_1stRound"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+# Rerun of the pipeline without PSCs
+
+## Re-run to get gl_nd_expsc
+
+```{r}
+library(tidyverse)
+library(furrr)
+library(qs)
+library(janitor)
+library(biomaRt)
+plan(multisession, workers = 4)
+
+# get RNA protrusion library counts w/o PSCs
+protrusion_tidy <- readRDS("./data/RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_tidy.RDS")
+protrusion_tidy_expsc <- protrusion_tidy %>%
+  filter(!str_detect(library, "PCSc"))
+protrusion_RNA_expsc <- protrusion_tidy_expsc %>%
+  group_by(gene_id) %>%
+  summarise(rna_in_protrusion_expsc = sum(protrusion_RNA))
+
+# attach to the main summary table
+summary_table <- readRDS("./data/summary_table.RDS") %>% clean_names() 
+summary_table_expsc <- left_join(summary_table, protrusion_RNA_expsc) %>%
+  dplyr::select(gene_id, gene_symbol, description, rna_in_protrusion, rna_in_protrusion_expsc, everything())
+
+summary_table_expsc %>%
+  saveRDS("./data/summary_table_expsc.RDS")
+
+# How many mouse genes? - 5028 genes
+summary_table_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  nrow()
+
+# process DIOPT conversion
+diopt_mousetofly <- qread("./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
+too_many_matches <- diopt_mousetofly %>%
+  filter(diopt_score >= 8) %>%
+  group_by(dmel_gene_id) %>%
+  slice_max(diopt_score, n = 3) %>% 
+  summarise(count = n()) %>% 
+  ungroup() %>%
+  filter(count >= 2) %>% pull(dmel_gene_id) 
+diopt_conversion_table <- diopt_mousetofly %>%
+  filter(diopt_score >= 8) %>%
+  group_by(dmel_gene_id) %>%
+  slice_max(diopt_score, n = 3) %>%
+  ungroup() %>%
+  filter(if_else(
+    dmel_gene_id %in% too_many_matches, 
+    diopt_score >= 10,
+    diopt_score >= 8))
+diopt_conversion_table %>%
+  ggplot(aes(x = as.factor(diopt_score))) +
+  geom_bar()
+df <- summary_table_expsc %>%
+  left_join(
+    diopt_conversion_table %>% 
+      dplyr::select(mmus_gene_id, dmel_gene_id, dmel_gene_name),
+    by = c("gene_id" = "mmus_gene_id")
+  )
+
+fly_mart96 <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "dmelanogaster_gene_ensembl", 
+                        host = "https://apr2019.archive.ensembl.org")
+fly_biomart_attributes <- listAttributes(fly_mart96)
+attributes_wanted <- c("ensembl_gene_id", "go_id", "name_1006", "namespace_1003")
+fly_go_ens96 <- getBM(attributes = attributes_wanted,
+                          mart = fly_mart96,
+                          filters = "ensembl_gene_id",
+                          values = unique(diopt_conversion_table$dmel_gene_id)) %>%
+  dplyr::select("dmel_gene_id" = ensembl_gene_id, go_id, "term" = name_1006, namespace_1003) %>%
+  mutate(go_id = str_remove(go_id, ":")) %>%
+  unite(col = "terms", c(go_id, term), sep = " ") %>%
+  mutate(namespace_1003 = paste0("go_", namespace_1003)) %>%
+  group_by(dmel_gene_id, namespace_1003) %>%
+  mutate(terms = paste0(terms, collapse = ", ")) %>%
+  ungroup() %>% distinct() %>%
+  pivot_wider(id_cols = dmel_gene_id, names_from = namespace_1003, values_from = terms) %>%
+  dplyr::select(-c(go_go, go_))
+sfari_dmel_ids <- read_csv("./data/SFARI/sfari_left_join_dmel_diopt.csv") %>%
+  filter(diopt_score >= 8) %>%
+  filter(!is.na(dmel_gene_id)) %>%
+  pull(dmel_gene_id) %>%
+  unique()
+synapse_localised <- read_tsv("./data/fb_go_lists/synapse_localised.txt", col_names = FALSE) %>% pull(X1)
+synapse_organization <- read_tsv("./data/fb_go_lists/synapse_organization.txt", col_names = FALSE) %>% pull(X1)
+synaptic_signalling <- read_tsv("./data/fb_go_lists/synaptic_signalling.txt", col_names = FALSE) %>% pull(X1)
+gl_dmel_expsc <- df %>%
+  filter(!is.na(dmel_gene_id)) %>%
+  group_by(dmel_gene_id, dmel_gene_name) %>%
+  summarise(mmus_gene_ids = paste0(gene_id, collapse = ", "),
+            mmus_gene_symbols = paste0(gene_symbol, collapse = ", "),
+            rna_in_protrusion = max(rna_in_protrusion),
+            rna_in_protrusion_expsc = max(rna_in_protrusion_expsc),
+            mean_tpm_across_dataset = max(mean_tpm_across_dataset),
+            enriched_in_protrusion = max(enriched_in_protrusion),
+            mean_rna_enrichment_l2fc = max(mean_rna_enrichment_l2fc),
+            translation_in_protrusion = max(translation_in_protrusion),
+            enhanced_translation_in_protrusion = max(enhanced_translation_in_protrusion),
+            mean_translation_enhancement_l2fc = max(mean_translation_enhancement_l2fc),
+            mmus_go_bp = paste0(go_biological_process, collapse = ", "),
+            mmus_go_mf = paste0(go_molecular_function, collapse = ", "),
+            mmus_go_cc = paste0(go_cellular_component, collapse = ", "),
+            ) %>%
+  ungroup() %>%
+  mutate(sfari_dmel = if_else(dmel_gene_id %in% sfari_dmel_ids, TRUE, FALSE)) %>%
+  left_join(fly_go_ens96, by = "dmel_gene_id") %>%
+  mutate(synapse_localised = if_else(dmel_gene_id %in% synapse_localised, TRUE, FALSE),
+         synapse_organization = if_else(dmel_gene_id %in% synapse_organization, TRUE, FALSE),
+         synaptic_signalling = if_else(dmel_gene_id %in% synaptic_signalling, TRUE, FALSE))
+
+gl_expsc <- gl_dmel_expsc %>%
+  dplyr::select(dmel_gene_id, rna_in_protrusion_expsc)
+
+gl_nd <- qread("./output/glia-localised-neurodegenerative-disease-incorporated.qs")
+gl_nd_expsc <- left_join(gl_nd, gl_expsc, by = "dmel_gene_id") %>%
+  dplyr::select(contains("dmel_gene"), contains("mmus_gene"), contains("rna_in_protrusion"), everything())
+
+qsave(gl_nd_expsc, "./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+
+gl_nd_expsc %>%
+  write_tsv("./glia-localised-rna-expsc.txt")
+
+```
+
+
+```{r}
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+protrusion_tidy <- readRDS("./data/RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_tidy.RDS")
+protrusion_tidy_expsc <- protrusion_tidy %>%
+  filter(!str_detect(library, "PCSc"))
+protrusion_RNA_expsc <- protrusion_tidy_expsc %>%
+  group_by(gene_id) %>%
+  summarise(rna_in_protrusion_expsc = sum(protrusion_RNA))
+
+## How many of 1700 are found in each glial subtype protrusions?
+gl_nd_expsc_glia_list <- protrusion_tidy$library %>% 
+  unique() %>%
+  set_names() %>%
+  map(~{
+    gene_string <- protrusion_tidy %>%
+      filter(library == .x & protrusion_RNA == TRUE) %>%
+      pull(gene_id) %>%
+      str_c(collapse = "|")
+    output_df <- gl_nd_expsc %>%
+      filter(str_detect(mmus_gene_ids, gene_string))
+  })
+
+gl_nd_expsc_glia_list %>%
+  map(~{
+    .x %>%
+      filter(rna_in_protrusion_expsc >= 7) %>%
+      filter(`subperineurial glial cell` == TRUE | 
+               `perineurial glial sheath` == TRUE |
+               `adult brain perineurial glial cell` == TRUE |
+               `ensheathing glial cell` == TRUE) %>%
+      nrow()
+  })
+
+## See count
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+nrow(expsc_7cutoff_df)
+
+## How many fly genes?
+gl_nd_expsc %>% 
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  nrow()
+
+```
+
+## Replot library meta-table bars
+
+```{r}
+# Create glial protrusion library table -------------------------------------------------------
+
+library(tidyverse)
+library(readxl)
+library(qs)
+library(rcartocolor)
+
+# Get plotting dataframe ----------------------------------------------------------------------
+
+## Glial data
+avgTPM_wide <- readRDS("./data/RNAseq/quant_results/all-glia_avgTPM_wide.RDS")
+
+### Only keep the 11 libraries that we are interested in 
+protrusion_RNA_library_info_expsc <- read_csv("./data/RNAseq/protrusion_RNA_library_info.csv") %>%
+  unite(col = "index", c(Model.system, Species, Separation.method, Data.type, Reference), sep = "\n\n") %>%
+  filter(library != "PCSc_protrusion_txn")
+protrusion_RNA_libraries <- protrusion_RNA_library_info_expsc$library
+avgTPM_expsc <- avgTPM_wide %>%
+  dplyr::select(gene_id, protrusion_RNA_libraries) %>%
+  pivot_longer(cols = contains(c("trap", "txn")),
+               names_to = "library",
+               values_to = "TPM") %>%
+  filter(library != "PCSc_protrusion_txn")
+
+## Neurite data
+neurite_enriched <- read_excel("./data/RNAseq/external_data/Supplementary online tables_neurite-enriched.xlsx",
+                               skip = 1) %>% janitor::clean_names()
+
+neurite_present <- read_excel("./data/RNAseq/external_data/Supplementary online tables_Chekulaeva_most-abundant.xlsx",
+                              skip = 1) %>% janitor::clean_names()
+
+## Annotate and summarise
+### Genes that are commonly detected in at least 3 datasets
+commonly_expressed_genes <- avgTPM %>%
+  group_by(gene_id) %>%
+  summarise(n_exp_lib = sum(TPM > 10)) %>% ungroup() %>%
+  filter(n_exp_lib >= 3) %>%
+  pull(gene_id)
+
+avgTPM_anno <- avgTPM_expsc %>%
+  mutate(protrusion_RNA = if_else(TPM > 10, TRUE, FALSE)) %>%
+  mutate(is_common = if_else(gene_id %in% commonly_expressed_genes, "Detected in ≥ 3 datasets", "Detected in < 3 datasets")) %>%
+  mutate(is_neurite_present = if_else(gene_id %in% neurite_present$gene_id, "Shared with neurites", "Glia only"))
+
+avgTPM_summary_glia_dataset <- avgTPM_anno %>%
+  filter(protrusion_RNA == TRUE) %>%
+  group_by(library, is_common) %>%
+  summarise(count = n()) %>% ungroup() %>%
+  left_join(protrusion_RNA_library_info)
+
+avgTPM_summary_glia_neurite <- avgTPM_anno %>%
+  filter(protrusion_RNA == TRUE) %>%
+  group_by(library, is_neurite_present) %>%
+  summarise(count = n()) %>% ungroup() %>%
+  left_join(protrusion_RNA_library_info)
+
+expression("">=3)
+
+# Plot overall study summary ------------------------------------------------------------------
+
+colour <- carto_pal(12, "Vivid")
+
+c("#E58606", "#5D69B1", "#52BCA3", "#99C945", "#CC61B0", "#24796C", "#DAA51B", "#2F8AC4", "#764E9F", "#ED645A", "#CC3A8E", "#A5AA99")
+
+colour_to_use <- c("gray75", "#E58606")
+
+avgTPM_summary_glia_dataset %>%
+  mutate(index = str_replace(index, "trans", "\ntrans")) %>%
+  mutate(index = str_replace(index, "al,", "al,\n")) %>%
+  # mutate(is_common, str_replace(is_common, "≥", "\u2265")) %>%
+  ggplot(aes(
+    x = index,
+    y = count, 
+    fill = is_common
+  )) +
+  labs(fill = "",
+       x = "",
+       y = "Detected gene count (TPM >10)") + 
+  geom_col(width = 0.6, alpha = 0.9) + 
+  scale_fill_manual(values = colour_to_use) +
+  scale_y_continuous(expand = c(0, 100)) + 
+  theme_classic(base_size = 6) + 
+  theme(legend.position = "right",
+    axis.text.x = element_text(size = 3),
+    legend.text = element_text(size = 4)) +
+  guides(fill = guide_legend(
+    reverse = FALSE,
+    keywidth = 0.3,
+    keyheight = 0.3))
+
+ggsave("./output/graphics/library-table_expsc.pdf", 
+       width = 15 * 0.33, height = 6.5 * 0.33,
+       device = cairo_pdf)
+
+```
+
+# Comparison with neurite and cancer protrusion 
+
+## Glia and Neurite 
+
+```{r}
+library(tidyverse)
+library(readxl)
+source("./Rscript/run_hypergeometric_test.R")
+
+# glia
+summary_table_expsc <- readRDS("./data/summary_table_expsc.RDS")
+glia_localised_rna_mmus <- summary_table_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  pull(gene_id)
+
+groupA <- length(glia_localised_rna_mmus)
+
+# neurites
+chek_neurite_txn_df <- read_excel("./data/RNAseq/external_data/Supplementary online tables_Chekulaeva_most-abundant.xlsx", skip = 1) %>% janitor::clean_names()
+neurite_localised_rna_mmus <- chek_neurite_txn_df %>%
+  filter(datasets_with_neurite_tpm_10 >= 8) %>%
+  pull(gene_id)
+
+groupB <- length(neurite_localised_rna_mmus)
+
+# background
+diopt_mousetofly <- qread("./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
+mmus_genes <- unique(diopt_mousetofly$mmus_gene_id)
+
+background <-length(mmus_genes)
+
+# overlaps
+glia_and_neurite_localised_rna <- intersect(glia_localised_rna_mmus, neurite_localised_rna_mmus) 
+
+overlap <- length(glia_and_neurite_localised_rna)
+
+# enrichment - 0
+run_hypergeometric_test(overlap, groupA, groupB, 10000)
+
+
+```
+
+## Cancer protrusion (MDA-MB231 breast cancer cells) l2fc > 0.5
+
+```{r}
+library(biomaRt)
+library(ggupset)
+
+##
+cancer_df <- read_csv("./data/FCA/mardakeh2015/txn_data.csv") %>%
+  janitor::clean_names()
+
+cancer_localised_rna_hsap <- cancer_df %>%
+  filter(log_2_ratio_rna_protrusion_body_1 > 0.5) %>%
+  pull(ensg)
+
+human_mart <- useMart("ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl")
+human_mart_attributes <- listAttributes(human_mart)
+attributes_wanted <- c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene")
+cancer_df_mouse_conversion <- getBM(attributes = attributes_wanted,
+                                    mart = human_mart,
+                                    filters = "ensembl_gene_id",
+                                    values = cancer_localised_rna_hsap)
+
+cancer_localised_rna_mmus <- unique(cancer_df_mouse_conversion$mmusculus_homolog_ensembl_gene)
+
+length(cancer_localised_rna_mmus)
+
+intersect(glia_and_neurite_localised_rna, cancer_localised_rna_mmus) %>% length()
+
+##
+upset_df <- bind_rows(
+  tibble(cell_type = "Glia", gene_id = glia_localised_rna_mmus),
+  tibble(cell_type = "Neurite", gene_id = neurite_localised_rna_mmus),
+  tibble(cell_type = "Breast cancer", gene_id = cancer_localised_rna_mmus)
+) %>%
+  group_by(gene_id) %>%
+  summarise(cell_type = list(sort(cell_type)))
+
+upset_plot <-upset_df %>%
+  ggplot(aes(x = cell_type)) + 
+  geom_bar(width = 0.6, 
+           fill = "#DAA51B", 
+           linewidth = 0) + 
+  geom_text(stat = 'count', 
+            aes(label = after_stat(count)), 
+            vjust = -0.8,
+            cex = 1.5) +
+  labs(x = "", y = "Localized transcript overlaps") + 
+  scale_x_upset(order_by = "degree", reverse = TRUE) +
+  axis_combmatrix(levels = c("Glia", "Neurite", "Breast cancer"), 
+                  ylim = c(0, 2800)
+                  ) + 
+  theme_classic(base_size = 5) +
+  theme_combmatrix(
+    combmatrix.panel.point.color.fill = "gray50",
+    combmatrix.panel.point.size = 2,
+    combmatrix.panel.line.size = 0.5,
+    combmatrix.panel.line.colour = "gray50",
+    combmatrix.label.text = element_text(size = 4),
+    # combmatrix.label.height = 2
+    )
+
+upset_plot
+
+ggsave(plot = upset_plot, "./output/graphics/cancer_neurite_glia_localized_rna_upset.pdf", 
+       width = 6 * 0.33, height = 4.5 * 0.33)
+
+
+```
+
+# PSC transcriptome comparison
+
+```{r}
+## data
+protrusion_tidy <- readRDS("./data/RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_tidy.RDS")
+psc_tpm <- protrusion_tidy %>%
+  filter(str_detect(library, "PCS"))
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+
+## PSC expressed genes
+psc_rna_localised_mmus <- psc_tpm %>%
+  filter(TPM > 10) %>%
+  pull(gene_id)
+
+gl_nd_psc_filtered <- gl_nd_expsc %>%
+  filter(str_detect(mmus_gene_ids, paste0(psc_rna_localised_mmus, collapse = "|")))
+
+psc_rna_localised_dmel <- gl_nd_psc_filtered$dmel_gene_id
+
+## 1740 genes
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+expsc_7cutoff_genes <- expsc_7cutoff_df$dmel_gene_id
+
+## overlap
+intersect(expsc_7cutoff_genes, psc_rna_localised_dmel) %>% length()
+
+## Let's plot it
+psc_plot_df <- tibble(
+  expression_status = c("PSC expressed", "Not expressed"),
+  gene_count = c(
+    intersect(expsc_7cutoff_genes, psc_rna_localised_dmel) %>% length(),
+    setdiff(expsc_7cutoff_genes, psc_rna_localised_dmel) %>% length()
+    )
+)
+
+psc_plot_df %>%
+  ggplot(aes(x = "1,740 predicted", y = gene_count, fill = expression_status)) + 
+  geom_col(width = 0.5, colour = "gray20") + 
+  geom_text(
+    aes(x = 1, label = paste0(gene_count, " genes")),
+    position = position_stack(vjust = 0.5),
+    cex = 3.5,
+    fontface = "bold"
+  ) + 
+  labs(
+    x = "",
+    y = "Gene count",
+    fill = ""
+  ) + 
+  scale_fill_manual(values = c("gray70", "goldenrod2")) + 
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(size = 10)
+  )
+
+ggsave("./output/graphics/PSC_expression.pdf", height = 3, width = 3.5)
+
+
+```
+
+
+# Expression level and localisation
+
+## TPM versus protrusion expression status
+
+```{r}
+source("./Rscript/how_many_genes_localise.r")
+library(colorspace)
+
+## Plot only library groups that have
+quantile_plot_df <- quantile_range_df %>%
+  filter(compartments == 2) %>%
+  mutate(quantile = paste0("~", quantile * 25, "%")) %>%
+  mutate(quantile = fct_relevel(quantile, c("~25%", "~50%", "~75%", "~100%")))
+
+colours <- sequential_hcl(palette = "inferno", n = 6)[2:5]
+
+quantile_plot_df %>%
+  ggplot(aes(x = quantile, y = percentage_protrusion, colour = as.factor(quantile))) +
+  geom_jitter(
+    size = 3,
+    colour = "gray70", 
+    position = position_jitter(width = 0.2)
+    ) +
+  geom_boxplot(
+    width = 0.5,
+    outlier.size = 0,
+    outlier.stroke = 0,
+    alpha = 0
+    ) + 
+  labs(
+    x = "RNA expression level quantile",
+    y = "% localised transcripts"
+  ) + 
+  scale_colour_manual(values = colours) + 
+  coord_cartesian(ylim = c(0, 100)) + 
+  theme_bw() +
+  theme(legend.position = "none")
+
+ggsave("./output/graphics/expression_quantile_plot.pdf", height = 3, width = 4.5)
+
+
+```
+
+## TPM distribution of 1740
+
+```{r}
+library(rstatix)
+
+##
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+##
+distribution_plot_df <- gl_nd_expsc %>%
+  mutate(is_1740 = if_else(dmel_gene_id %in% expsc_7cutoff_df$dmel_gene_id, TRUE, FALSE))
+
+distribution_plot_df <- bind_rows(
+  gl_nd_expsc %>%
+    filter(dmel_gene_id %in% expsc_7cutoff_df$dmel_gene_id) %>%
+    mutate(plot_type = "1,740 genes"),
+  gl_nd_expsc %>%
+    filter(rna_in_protrusion_expsc >= 7) %>%
+    mutate(plot_type = "Localised genes")
+)
+
+distribution_plot_stat <- distribution_plot_df %>%
+  t_test(mean_tpm_across_dataset ~ plot_type) %>%
+  mutate(p_label = paste0("p=", round(p, 1)))
+
+##
+distribution_plot_df %>%
+  mutate(plot_type = fct_rev(plot_type)) %>%
+  ggplot(aes(x = plot_type, y = mean_tpm_across_dataset, fill = plot_type)) + 
+  geom_violin(width = 0.75) +
+  geom_pointrange(stat = "summary", fun.data = "mean_sdl", fun.args = list(mult = 1)) +
+  labs(
+    x = "", y = "Average TPM across dataset"
+  ) + 
+  scale_y_log10() +
+  scale_fill_manual(values = c("gray80", "goldenrod2")) + 
+  annotate(geom = "text", x = 1.5, y = 5000, label = distribution_plot_stat$p_label) + 
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(size = 10)
+  )
+
+ggsave("./output/graphics/expression_1740_plot.pdf", height = 3, width = 3)
+
+```
+
+# GO analysis
+
+## Clusterprofilier
+
+```{r}
+library(tidyverse)
+library(qs)
+library(patchwork)
+library(rstatix)
+library(colorspace)
+library(clusterProfiler)
+library(enrichplot)
+
+library(org.Dm.eg.db)
+
+## foreground
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+expsc_7cutoff_genes <- expsc_7cutoff_df$dmel_gene_id
+
+## background
+ens99_genes <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  pull(gene_id)
+
+convertible_genes <- gl_nd_expsc$dmel_gene_id
+
+## run clusterprofiler
+ont <- c("bp", "mf", "cc") %>% purrr::set_names()
+
+go_ens99 <- ont %>%
+  map(~{
+    cf_output <- enrichGO(
+      gene = expsc_7cutoff_genes,
+      universe = ens99_genes,
+      OrgDb = org.Dm.eg.db,
+      keyType = "ENSEMBL",
+      ont = .x,
+      pvalueCutoff = 1,
+      qvalueCutoff = 1,
+      minGSSize = 2,
+      readable = TRUE
+    ) %>% pairwise_termsim()
+    
+    cf_output@result <- cf_output@result %>%
+      separate(col = GeneRatio, into = c("foreground_nominator", "foreground_denominator"), sep = "/", remove = FALSE) %>%
+      separate(col = BgRatio, into = c("background_nominator", "background_denominator"), sep = "/", remove = FALSE) %>%
+      mutate(across(contains("nominator"), ~as.double(.))) %>%
+      mutate(across(contains("denominator"), ~as.double(.))) %>%
+      mutate(fc = (foreground_nominator / foreground_denominator) / (background_nominator / background_denominator)) %>%
+      mutate(l2fc = log2(fc)) %>%
+      mutate(log10_padjust = -log10(p.adjust))
+    
+    return(cf_output)
+  }, .progress = TRUE)
+
+go_convertible <- ont %>%
+  map(~{
+    cf_output <- enrichGO(
+      gene = expsc_7cutoff_genes,
+      universe = convertible_genes,
+      OrgDb = org.Dm.eg.db,
+      keyType = "ENSEMBL",
+      ont = .x,
+      pvalueCutoff = 1,
+      qvalueCutoff = 1,
+      minGSSize = 2,
+      readable = TRUE
+    ) %>% pairwise_termsim()
+    
+    cf_output@result <- cf_output@result %>%
+      separate(col = GeneRatio, into = c("foreground_nominator", "foreground_denominator"), sep = "/", remove = FALSE) %>%
+      separate(col = BgRatio, into = c("background_nominator", "background_denominator"), sep = "/", remove = FALSE) %>%
+      mutate(across(contains("nominator"), ~as.double(.))) %>%
+      mutate(across(contains("denominator"), ~as.double(.))) %>%
+      mutate(fc = (foreground_nominator / foreground_denominator) / (background_nominator / background_denominator)) %>%
+      mutate(l2fc = log2(fc)) %>%
+      mutate(log10_padjust = -log10(p.adjust))
+    
+    return(cf_output)
+  }, .progress = TRUE)
+
+##
+go_ens99$bp@result %>% View()
+
+go_convertible$bp@result %>% View()
+
+## save output
+go_output_df <- ont %>%
+  map_dfr(~{
+    go_convertible %>% pluck(.x) %>% .@result 
+  }, .id = "ontology") %>%
+  as_tibble()
+
+write_csv(go_output_df, "./output/JCB_revision_1stRound/go_enrichment.csv")
+
+```
+
+## De-enrichment of housekeeping genes
+
+```{r}
+derichment_df <- go_convertible$bp@result %>%
+  filter(ID %in% c("GO:0007346", "GO:0006399", "GO:0016485", "GO:0006357", "GO:0006259")) %>%
+  mutate(Description = str_replace(Description, "RNA polymerase II", "RNAP"))
+
+order <- derichment_df %>%
+  arrange(l2fc) %>%
+  pull(Description)
+
+derichment_df %>%
+  mutate(Description = fct_relevel(Description, rev(order))) %>%
+  ggplot(aes(x = l2fc, y = Description)) + 
+  geom_col(width = 0.75, fill = "gray70", linewidth = 0.5, colour = "gray20") + 
+  labs(x = "Log2 FoldChange", y = "") +
+  theme_bw() +
+  theme(
+  )
+
+ggsave("./output/graphics/go_house_keeping.pdf", height = 3, width = 5)
+
+
+```
+
+## GO plots 
+
+```{r}
+library(patchwork)
+
+go_terms_to_include <- c(
+  "translation",
+  "actin filament-based process",
+  "negative regulation of signaling",
+  "cell junction assembly",
+  "cytoskeleton organization",
+  "neuron development",
+  "tissue morphogenesis",
+  "cellular respiration",
+  "regulation of localization",
+  "regulation of mRNA processing",
+  
+  "structural constituent of ribosome",
+  "mRNA binding",
+  "actin binding",
+  "translation regulator activity",
+  "GTP binding",
+  "proton transmembrane transporter activity",
+  "cytoskeletal protein binding",
+  "electron transfer activity",
+  "proton channel activity",
+  
+  "axon",
+  "ribosome",
+  "cell junction",
+  "respiratory chain complex",
+  "cytoplasmic vesicle",
+  "membrane protein complex",
+  "neuron projection",
+  "synapse",
+  "terminal bouton",
+  "ribonucleoprotein granule"
+)
+
+bp <- go_convertible$bp@result %>% 
+  filter(Description %in% go_terms_to_include) %>%
+  mutate(Description = str_replace(Description, "negative ", "")) %>%
+  mutate(Description = str_replace(Description, "positive ", "")) %>%
+  mutate(Description = str_replace(Description, "regulation of ", "")) %>%
+  ggplot(aes(x = log10_padjust, 
+             y = reorder(Description, log10_padjust), 
+             colour = fc, 
+             size = foreground_nominator)
+  ) +
+  geom_segment(aes(xend = 3, y = reorder(Description, log10_padjust), yend = reorder(Description, log10_padjust)), 
+               colour = "gray50", 
+               size = 0.5
+  ) +
+  geom_point() + 
+  scale_colour_continuous_sequential(
+    palette = "RedOr", 
+    rev = FALSE, begin = 0.3, end = 0.8
+  ) +
+  scale_size_continuous(range = c(2,5)) +
+  labs(x = "", y = "", size = "Gene count", colour = "FoldChange") + 
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    axis.text.y = element_text(size = 8, colour = "gray40"),
+    legend.title = element_text(size = 5),
+    legend.text = element_text(size = 5)
+  ) +
+  guides(
+    colour = guide_colourbar(barwidth = 4, barheight = 0.7),
+  )
+
+mf <- go_convertible$mf@result %>%
+  filter(Description %in% go_terms_to_include) %>%
+  mutate(Description = str_replace(Description, " activity", "")) %>%
+  ggplot(aes(x = log10_padjust, 
+             y = reorder(Description, log10_padjust), 
+             colour = fc, 
+             size = foreground_nominator)
+  ) +
+  geom_segment(aes(xend = 2, y = reorder(Description, log10_padjust), yend = reorder(Description, log10_padjust)), 
+               colour = "gray50", 
+               size = 0.5
+  ) +
+  geom_point() + 
+  scale_colour_continuous_sequential(
+    palette = "Dark Mint", 
+    rev = FALSE, begin = 0.3, end = 0.8
+  ) +
+  scale_size_continuous(range = c(2,5)) +
+  labs(x = "", y = "", size = "Gene count", colour = "FoldChange") + 
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    axis.text.y = element_text(size = 8, colour = "gray40"),
+    legend.title = element_text(size = 5),
+    legend.text = element_text(size = 5)
+  ) +
+  guides(
+    colour = guide_colourbar(barwidth = 4, barheight = 0.7),
+  )
+
+cc <- go_convertible$cc@result %>% 
+  filter(Description %in% go_terms_to_include) %>%
+  ggplot(aes(x = log10_padjust, 
+             y = reorder(Description, log10_padjust), 
+             colour = fc, 
+             size = foreground_nominator)
+  ) +
+  geom_segment(aes(xend = 1.5, y = reorder(Description, log10_padjust), yend = reorder(Description, log10_padjust)), 
+               colour = "gray50", 
+               size = 0.5
+  ) +
+  geom_point() + 
+  scale_colour_continuous_sequential(
+    palette = "PuBu", 
+    rev = FALSE, begin = 0.3, end = 0.8
+  ) +
+  scale_size_continuous(range = c(2,5)) +
+  labs(x = "", y = "", size = "Gene count", colour = "FoldChange") + 
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "vertical",
+    axis.text.y = element_text(size = 8, colour = "gray40"),
+    legend.title = element_text(size = 5),
+    legend.text = element_text(size = 5)
+  ) +
+  guides(
+    colour = guide_colourbar(barwidth = 4, barheight = 0.7),
+  )
+
+bp + mf + cc
+
+ggsave("./output/graphics/go_clusterprofiler.pdf", height = 5, width = 10.5)
+
+```
+
+## analysis of non-predicted genes
+
+```{r}
+## 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+## prepare genes
+predicted_localised <- expsc_7cutoff_df$dmel_gene_id
+predicted_nonlocalised <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc < 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE) %>%
+  pull(dmel_gene_id)
+
+## foreground 
+multi_foreground <- list(
+  `Predicted.\nlocalised` = predicted_localised,
+  `Predicted.\nnonlocalised` = predicted_nonlocalised
+) 
+
+## background
+ens99_genes <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  pull(gene_id)
+
+convertible_genes <- gl_nd_expsc$dmel_gene_id
+
+## clusterprofiler multi
+run_clusterprofiler_multiples <- function(ontology){
+  cf_cluster <- compareCluster(
+    geneCluster = multi_foreground, 
+    universe = convertible_genes,
+    fun = enrichGO, 
+    OrgDb = org.Dm.eg.db,
+    keyType = "ENSEMBL",
+    ont = ontology,
+    pvalueCutoff = 0.01,
+    # qvalueCutoff = 0.2,
+    minGSSize = 10
+  )
+  
+  cf_cluster <- setReadable(cf_cluster, OrgDb = org.Dm.eg.db, keyType = "ENSEMBL")
+  cf_cluster <- pairwise_termsim(cf_cluster)
+  
+  cf_cluster@compareClusterResult <- cf_cluster@compareClusterResult %>%
+    separate(col = GeneRatio, into = c("foreground_nominator", "foreground_denominator"), sep = "/", remove = FALSE) %>%
+    separate(col = BgRatio, into = c("background_nominator", "background_denominator"), sep = "/", remove = FALSE) %>%
+    mutate(across(contains("nominator"), ~as.double(.))) %>%
+    mutate(across(contains("denominator"), ~as.double(.))) %>%
+    mutate(fc = (foreground_nominator / foreground_denominator) / (background_nominator / background_denominator)) %>%
+    mutate(l2fc = log2(fc)) %>%
+    mutate(log10_padjust = -log10(p.adjust))
+  
+  return(cf_cluster)
+}
+
+multi_bp <- run_clusterprofiler_multiples("bp")
+multi_mf <- run_clusterprofiler_multiples("mf")
+multi_cc <- run_clusterprofiler_multiples("cc")
+
+multi_output_list <- list(multi_bp, multi_mf, multi_cc)
+
+## plot differences
+multi_output_list %>%
+  map(~{
+    .x %>%
+      dotplot(size = "count", color = "log10_padjust") +
+      labs(
+        x = "",
+        colour = "-log10(padjust)"
+      ) +
+      scale_colour_continuous_sequential(
+        palette = "Inferno", 
+        rev = FALSE, begin = 0.3, end = 0.8
+      ) +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 8),
+        legend.position = "bottom",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 6),
+        legend.text = element_text(size = 6)
+      )
+  }) %>%
+  wrap_plots(nrow = 1)
+
+ggsave("./output/graphics/go_clusterprofiler_nonlocalised_comparison.pdf", height = 6, width = 10.5)
+
+```
+
+## Translating ones
+
+```{r}
+## 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+## prepare genes
+predicted_localised <- expsc_7cutoff_df$dmel_gene_id
+predicted_localisedtranslated <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE) %>%
+  filter(translation_in_protrusion >= 4) %>%
+  pull(dmel_gene_id)
+
+length(predicted_localisedtranslated)
+
+intersect(expsc_7cutoff_df$dmel_gene_id, sfari_dmel_genes) %>% length()
+intersect(predicted_localisedtranslated, sfari_dmel_genes) %>% length()
+
+## foreground 
+multi_foreground <- list(
+  `Localised` = predicted_localised,
+  `Localised &\ntranslated` = predicted_localisedtranslated
+) 
+
+## background
+ens99_genes <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  pull(gene_id)
+
+convertible_genes <- gl_nd_expsc$dmel_gene_id
+
+## clusterprofiler multi
+run_clusterprofiler_multiples <- function(ontology){
+  cf_cluster <- compareCluster(
+    geneCluster = multi_foreground, 
+    universe = convertible_genes,
+    fun = enrichGO, 
+    OrgDb = org.Dm.eg.db,
+    keyType = "ENSEMBL",
+    ont = ontology,
+    pvalueCutoff = 0.01,
+    # qvalueCutoff = 0.2,
+    minGSSize = 10
+  )
+  
+  cf_cluster <- setReadable(cf_cluster, OrgDb = org.Dm.eg.db, keyType = "ENSEMBL")
+  cf_cluster <- pairwise_termsim(cf_cluster)
+  
+  cf_cluster@compareClusterResult <- cf_cluster@compareClusterResult %>%
+    separate(col = GeneRatio, into = c("foreground_nominator", "foreground_denominator"), sep = "/", remove = FALSE) %>%
+    separate(col = BgRatio, into = c("background_nominator", "background_denominator"), sep = "/", remove = FALSE) %>%
+    mutate(across(contains("nominator"), ~as.double(.))) %>%
+    mutate(across(contains("denominator"), ~as.double(.))) %>%
+    mutate(fc = (foreground_nominator / foreground_denominator) / (background_nominator / background_denominator)) %>%
+    mutate(l2fc = log2(fc)) %>%
+    mutate(log10_padjust = -log10(p.adjust))
+  
+  return(cf_cluster)
+}
+
+multi_bp <- run_clusterprofiler_multiples("bp")
+multi_mf <- run_clusterprofiler_multiples("mf")
+multi_cc <- run_clusterprofiler_multiples("cc")
+
+multi_output_list <- list(multi_bp, multi_mf, multi_cc) %>%
+  purrr::set_names(c("GO:Biological process", "GO:Molecular function", "GO:Cellular component"))
+
+
+## plot differences
+multi_output_list %>%
+  imap(~{
+    .x %>%
+      dotplot(size = "count", color = "log10_padjust") +
+      labs(
+        x = "",
+        subtitle = .y,
+        colour = "-log10(padjust)"
+      ) +
+      scale_colour_continuous_sequential(
+        palette = "Viridis", 
+        rev = FALSE, begin = 0.1, end = 0.9
+      ) +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 8),
+        legend.position = "bottom",
+        legend.direction = "vertical",
+        legend.title = element_text(size = 6),
+        legend.text = element_text(size = 6)
+      )
+  }) %>%
+  wrap_plots(nrow = 1)
+
+ggsave("./output/graphics/go_clusterprofiler_translatome_comparison.pdf", height = 6, width = 10.5)
+
+
+```
+
+# Intersection with SFARI
+
+```{r}
+## 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+## SFARI converted to dmel
+sfari_dmel <- read_csv("./data/SFARI/sfari_left_join_dmel_diopt.csv")
+
+sfari_dmel_genes <- sfari_dmel %>%
+  pull(dmel_gene_id) %>% unique()
+
+## Hypergeometric test
+source("./Rscript/run_hypergeometric_test.R")
+
+intersection_group <- intersect(sfari_dmel_genes, expsc_7cutoff_df$dmel_gene_id) %>% length() # 235 genes
+glial_group <- nrow(expsc_7cutoff_df)
+sfari_group <- intersect(sfari_dmel_genes, gl_nd_expsc$dmel_gene_id) %>% length()
+total_group <- nrow(gl_nd_expsc)
+
+run_hypergeometric_test(intersection_group, glial_group, sfari_group, total_group)
+
+## Predicted Non-localised ones
+expsc_pred_nonlocalised <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc < 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+intersection_group <- intersect(sfari_dmel_genes, expsc_pred_nonlocalised$dmel_gene_id) %>% length() # 157
+glial_group <- nrow(expsc_pred_nonlocalised)
+sfari_group <- intersect(sfari_dmel_genes, gl_nd_expsc$dmel_gene_id) %>% length()
+total_group <- nrow(gl_nd_expsc)
+
+run_hypergeometric_test(intersection_group, glial_group, sfari_group, total_group)
+
+
+```
+
+## VS neurite
+
+```{r}
+## glia 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+glia_localised_rna_dmel <- expsc_7cutoff_df$dmel_gene_id
+
+# neurites
+chek_neurite_txn_df <- read_excel("./data/RNAseq/external_data/Supplementary online tables_Chekulaeva_most-abundant.xlsx", skip = 1) %>% janitor::clean_names()
+neurite_localised_rna_mmus <- chek_neurite_txn_df %>%
+  filter(datasets_with_neurite_tpm_10 >= 8) %>%
+  pull(gene_id)
+
+diopt_mousetofly <- qread("./data/DIOPT/mouse96-to-fly/DIOPT_mouse-to-fly.qs")
+neurite_localised_rna_dmel <- diopt_mousetofly %>%
+  filter(mmus_gene_id %in% neurite_localised_rna_mmus) %>%
+  filter(diopt_score >= 8) %>%
+  filter(dmel_gene_id %in% gl_nd_expsc$dmel_gene_id) %>%
+  pull(dmel_gene_id) %>%
+  unique()
+
+length(neurite_localised_rna_dmel)
+
+## SFARI converted to dmel
+sfari_dmel <- read_csv("./data/SFARI/sfari_left_join_dmel_diopt.csv")
+
+sfari_dmel_genes <- sfari_dmel %>%
+  filter(dmel_gene_id %in% gl_nd_expsc$dmel_gene_id) %>%
+  pull(dmel_gene_id) %>% unique()
+
+## intersection
+intersect(glia_localised_rna_dmel, neurite_localised_rna_dmel) %>% length()
+
+## SFARI glia
+run_hypergeometric_test(
+  length(intersect(glia_localised_rna_dmel, sfari_dmel_genes)), 
+  nrow(expsc_7cutoff_df), 
+  intersect(sfari_dmel_genes, gl_nd_expsc$dmel_gene_id) %>% length(), 
+  nrow(gl_nd_expsc)
+)
+
+## SFARI neurite
+run_hypergeometric_test(
+  length(intersect(neurite_localised_rna_dmel, sfari_dmel_genes)), 
+  intersect(neurite_localised_rna_dmel, gl_nd_expsc$dmel_gene_id) %>% length(), 
+  intersect(sfari_dmel_genes, gl_nd_expsc$dmel_gene_id) %>% length(), 
+  nrow(gl_nd_expsc)
+)
+
+## Upset plot
+upset_df <- bind_rows(
+  tibble(cell_type = "Glia", gene_id = glia_localised_rna_dmel),
+  tibble(cell_type = "Neurite", gene_id = neurite_localised_rna_dmel),
+  tibble(cell_type = "SFARI", gene_id = sfari_dmel_genes)
+) %>%
+  group_by(gene_id) %>%
+  summarise(cell_type = list(sort(cell_type)))
+
+upset_plot <-upset_df %>%
+  ggplot(aes(x = cell_type)) + 
+  geom_bar(width = 0.6, 
+           fill = "goldenrod2", 
+           colour = "gray30") + 
+  geom_text(stat = 'count', 
+            aes(label = after_stat(count)), 
+            vjust = 0,
+            cex = 3) +
+  labs(x = "", y = "Overlap with SFARI list of genes") + 
+  scale_x_upset(order_by = "degree", reverse = TRUE) +
+  axis_combmatrix(levels = c("Glia", "Neurite", "SFARI"), 
+                  # ylim = c(0, 2800)
+                  ) + 
+  theme_bw() +
+  theme_combmatrix(
+    combmatrix.panel.point.color.fill = "gray50",
+    combmatrix.panel.point.size = 2,
+    combmatrix.panel.line.size = 0.5,
+    combmatrix.panel.line.colour = "gray50",
+    # combmatrix.label.text = element_text(size = 4),
+    # combmatrix.label.height = 2
+    )
+
+upset_plot
+
+ggsave(plot = upset_plot, "./output/graphics/SFARI_neurite_glia_localized_rna_upset.pdf", 
+       width = 4.5, height = 3)
+
+
+```
+
+# Disease model
+
+## localised genes
+
+```{r}
+library(ggrepel)
+
+## disease model database (cleaned)
+dismodel_ens99 <- read_csv("./data/Flybase/disease_model_annotations_fb_2022_04_ens99.csv")
+ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  mutate(ens99_gene_id = gene_id)
+
+## 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+## Prepare df
+gl_disease_count <- unique(dismodel_ens99$do_term) %>%
+  set_names() %>%
+  future_map_dfr(~{
+    do_genes <- filter(dismodel_ens99, do_term == .x) %>% pull(gene_id) %>% unique()
+    tibble(
+      count_in_genome = intersect(ens99$gene_id, do_genes) %>% length(),
+      count_in_gl = intersect(expsc_7cutoff_df$dmel_gene_id, do_genes) %>% length()
+    )
+  }, .id = "disease")
+
+total_background_count <- length(ens99$gene_id)
+total_target_count <- length(expsc_7cutoff_df$dmel_gene_id)
+
+gl_disease_statistics <- gl_disease_count %>%
+  mutate(
+    pvalue = phyper(
+      count_in_gl - 1, 
+      count_in_genome, 
+      total_background_count - count_in_genome,
+      total_target_count,
+      lower.tail = FALSE
+      )
+    ) %>%
+  mutate(expected_count = total_target_count * (count_in_genome / total_background_count)) %>%
+  mutate(foldchange = count_in_gl / expected_count) %>%
+  mutate(log2foldchange = log2(foldchange)) %>%
+  mutate(adj_pvalue = p.adjust(pvalue, method = "bonferroni"))
+
+## Plot
+gl_disease_statistics %>%
+  filter(log2foldchange != -Inf) %>%
+  mutate(put_label = if_else(adj_pvalue < 0.001 & log2foldchange >= 1.8, disease, NA_character_)) %>%
+  ggplot(aes(x = log2foldchange, y = -log10(adj_pvalue), colour = count_in_gl)) +
+  geom_point(alpha = 0.85, stroke = 0, size = 3.5) +
+  geom_text_repel(aes(label = put_label), 
+    max.overlaps = 100, hjust = 0,
+    cex = 2.3, colour = "gray40", 
+    segment.size = 0.1) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
+  labs(
+    x = "log2FoldChange",
+    y = "Adjusted p-value (-log10)",
+    colour = "Localised\ngene count"
+  ) + 
+  scale_colour_continuous_sequential(palette = "Inferno", begin = 0.2, end = 0.8) +
+  coord_cartesian(xlim = c(0, 3.5)) +
+  theme_bw() +
+  theme(
+    legend.key.width = unit(0.5,"cm"),
+    panel.grid = element_blank()
+    ) +
+  annotate(geom = "text", x = 0.2, y = -log(0.05) + 2, label = "p=0.01", cex = 2, alpha = 0.5) 
+
+ggsave("./output/graphics/human-disease-volcano-plot_expsc.pdf", height = 4.8, width = 6)
+
+
+```
+
+## nonlocalised genes
+
+```{r}
+library(ggrepel)
+
+## disease model database (cleaned)
+dismodel_ens99 <- read_csv("./data/Flybase/disease_model_annotations_fb_2022_04_ens99.csv")
+ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  mutate(ens99_gene_id = gene_id)
+
+## nonlocalised genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+psc_nonlocalised <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc < 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+## Prepare df
+gl_disease_count <- unique(dismodel_ens99$do_term) %>%
+  set_names() %>%
+  future_map_dfr(~{
+    do_genes <- filter(dismodel_ens99, do_term == .x) %>% pull(gene_id) %>% unique()
+    tibble(
+      count_in_genome = intersect(ens99$gene_id, do_genes) %>% length(),
+      count_in_gl = intersect(psc_nonlocalised$dmel_gene_id, do_genes) %>% length()
+    )
+  }, .id = "disease")
+
+total_background_count <- length(ens99$gene_id)
+total_target_count <- length(expsc_7cutoff_df$dmel_gene_id)
+
+gl_disease_statistics <- gl_disease_count %>%
+  mutate(
+    pvalue = phyper(
+      count_in_gl - 1, 
+      count_in_genome, 
+      total_background_count - count_in_genome,
+      total_target_count,
+      lower.tail = FALSE
+      )
+    ) %>%
+  mutate(expected_count = total_target_count * (count_in_genome / total_background_count)) %>%
+  mutate(foldchange = count_in_gl / expected_count) %>%
+  mutate(log2foldchange = log2(foldchange)) %>%
+  mutate(adj_pvalue = p.adjust(pvalue, method = "bonferroni"))
+
+## Plot
+gl_disease_statistics %>%
+  filter(log2foldchange != -Inf) %>%
+  mutate(put_label = if_else(adj_pvalue < 0.01 & log2foldchange >= 0.5, disease, NA_character_)) %>%
+  ggplot(aes(x = log2foldchange, y = -log10(adj_pvalue), colour = count_in_gl)) +
+  geom_point(alpha = 0.85, stroke = 0, size = 3.5) +
+  geom_text_repel(aes(label = put_label), 
+    max.overlaps = 100, hjust = 0,
+    cex = 2.3, colour = "gray40", 
+    segment.size = 0.1) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
+  labs(
+    x = "log2FoldChange",
+    y = "Adjusted p-value (-log10)",
+    colour = "Non-localised\ngene count"
+  ) + 
+  scale_colour_continuous_sequential(palette = "Inferno", begin = 0.2, end = 0.8, rev = TRUE) +
+  coord_cartesian(xlim = c(0, 3.5), ylim = c(0, 48)) +
+  theme_bw() +
+  theme(
+    legend.key.width = unit(0.5,"cm"),
+    panel.grid = element_blank()
+    ) +
+  annotate(geom = "text", x = 0.2, y = -log(0.05) + 2, label = "p=0.01", cex = 2, alpha = 0.5) 
+
+ggsave("./output/graphics/human-disease-volcano-plot_expsc_nonlocalised.pdf", height = 4.8, width = 6)
+```
+
+
+# REACTOME
+
+## Localised genes
+
+```{r}
+# ----- Prepare Flybase disease association dataframe 
+
+## FB disease model annotations
+reactome_raw <- read_csv("./data/REACTOME/flymine_gene_pathway_level1.csv") %>% 
+  setNames(c("pathways_name_level0", "gene_secondary_identifier", "gene_symbol", "pathways_identifier_level1", "pathways_name_level1", "datasets_name","current_gene_id")) 
+
+reactome_cleaned <- reactome_raw 
+
+## Resolve current gene_id to ens99 gene_id
+ens99 <- read_csv("./data/Flybase/Dmel_tx2gene_ENSEMBL_v99.csv") %>%
+  dplyr::select(gene_id, gene_name) %>% distinct() %>%
+  mutate(ens99_gene_id = gene_id)
+syno <- read_tsv("./data/Flybase/fbgn_annotation_ID_fb_2022_04.tsv", skip = 4) %>%
+  setNames(c("gene_symbol", "organism", "current_gene_id", "secondary_gene_ids", "annotation_id", "secondary_annotation_ids")) %>%
+  filter(organism == "Dmel") %>%
+  dplyr::select(current_gene_id, secondary_gene_ids)
+
+resolve_tmp <- left_join(reactome_cleaned, ens99, by = c("current_gene_id" = "gene_id"))
+resolve_noconflict <- filter(resolve_tmp, !is.na(ens99_gene_id)) %>%
+  dplyr::select(colnames(reactome_cleaned), "gene_id" = current_gene_id)
+resolve_yesconflict <- filter(resolve_tmp, is.na(ens99_gene_id)) %>%
+  left_join(syno, by = "current_gene_id") %>%
+  filter(!is.na(secondary_gene_ids)) %>%
+  separate_rows(secondary_gene_ids, sep = ",") %>% 
+  distinct() %>%
+  mutate(is_present_ens99 = if_else(secondary_gene_ids %in% ens99$gene_id, TRUE, FALSE))
+
+resolve_yesconflict_verdict <- resolve_yesconflict %>%
+  filter(is_present_ens99 == TRUE) %>%
+  dplyr::select(colnames(reactome_cleaned), -current_gene_id, "gene_id" = secondary_gene_ids) %>%
+  dplyr::select(gene_id, everything())
+
+reactome_ens99 <- bind_rows(resolve_noconflict, resolve_yesconflict_verdict) %>%
+  left_join(ens99, by = "gene_id") %>%
+  dplyr::select(-gene_symbol, -ens99_gene_id) %>%
+  dplyr::select(gene_id, gene_name, everything())
+
+reactome_ens99 %>%
+  group_by(pathways_name_level1) %>%
+  summarise(count = n()) -> tmp
+
+
+# ----- Perform statistics of gene set enrichment
+
+## 1740 genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+expsc_7cutoff_df <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc >= 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+gl_disease_count <- unique(reactome_ens99$pathways_name_level1) %>%
+  set_names() %>%
+  future_map_dfr(~{
+    do_genes <- filter(reactome_ens99, pathways_name_level1 == .x) %>% pull(gene_id) %>% unique()
+    tibble(
+      count_in_genome = intersect(ens99$gene_id, do_genes) %>% length(),
+      count_in_gl = intersect(expsc_7cutoff_df$dmel_gene_id, do_genes) %>% length()
+    )
+  }, .id = "name")
+
+total_background_count <- length(ens99$gene_id)
+total_target_count <- length(expsc_7cutoff_df$dmel_gene_id)
+
+gl_disease_statistics <- gl_disease_count %>%
+  mutate(
+    pvalue = phyper(
+      count_in_gl - 1, 
+      count_in_genome, 
+      total_background_count - count_in_genome,
+      total_target_count,
+      lower.tail = FALSE
+      )
+    ) %>%
+  mutate(expected_count = total_target_count * (count_in_genome / total_background_count)) %>%
+  mutate(foldchange = count_in_gl / expected_count) %>%
+  mutate(log2foldchange = log2(foldchange)) %>%
+  mutate(adj_pvalue = p.adjust(pvalue, method = "bonferroni"))
+
+## Dataframe for list of genes 
+gl_disease_gene_list <- gl_disease_statistics %>%
+  dplyr::select(name, log2foldchange, adj_pvalue, count_in_genome,"count_in_localised_genes" = count_in_gl) %>%
+  filter(-log(adj_pvalue) > 10) %>%
+  arrange(adj_pvalue) %>%
+  mutate(gene_list = map_chr(name, ~ {
+    filter(reactome_ens99, pathways_name_level1 == .x) %>% 
+      filter(gene_id %in% expsc_7cutoff_df$dmel_gene_id) %>%
+      pull(gene_name) %>% unique() %>% paste(collapse = ", ") %>% sort()
+  })) 
+
+#write_tsv(gl_disease_gene_list, "./output/analysis/gl_")
+
+# ----- Plot
+
+plottingdf <- gl_disease_statistics %>%
+  filter(log2foldchange != -Inf) %>%
+  mutate(put_label = if_else(-log10(adj_pvalue) > 15 | log2foldchange > 2.5, name, NA_character_)) %>%
+  mutate(put_label = if_else(-log10(adj_pvalue) < 5, NA_character_, put_label))
+  
+plottingdf$name2 <- reactome_ens99$pathways_name_level0[match(plottingdf$name, reactome_ens99$pathways_name_level1)]
+
+plottingdf <- plottingdf %>%
+  group_by(name2) %>%
+  mutate(level1_occurrence = sum(adj_pvalue < 0.01)) %>%
+  ungroup() %>%
+  mutate(name2 = if_else(level1_occurrence < 2, "other", name2))
+
+level1_order <- plottingdf %>%
+  arrange(desc(level1_occurrence)) %>%
+  pull(name2) %>%
+  unique()
+
+colours <- c(colorspace::qualitative_hcl(palette = "Dynamic", n = 11), "gray70")
+
+plottingdf %>%
+  mutate(name2 = fct_relevel(name2, level1_order)) %>%
+  ggplot(aes(x = log2foldchange, y = -log10(adj_pvalue), colour = name2, size = count_in_gl)) +
+  geom_point(alpha = 0.9, stroke = 0) +
+  geom_text_repel(aes(label = put_label), 
+                  max.overlaps = 100, hjust = 0,
+                  cex = 2, colour = "gray40", segment.size = 0.1) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
+  labs(
+    x = "log2FoldChange",
+    y = "Adjusted p-value (-log10)",
+    colour = "Reactome group (n>2 significant)",
+    size = "Localised genes"
+  ) + 
+  scale_colour_manual(values = colours) +
+  coord_cartesian(xlim = c(0, 3.5)) +
+  theme_bw() +
+  theme(
+    legend.key.width = unit(0.5,"cm"),
+    panel.grid = element_blank()
+  ) +
+  annotate(geom = "text", x = 0.2, y = -log(0.05) + 2, label = "p=0.01", cex = 2, alpha = 0.5) +
+  guides(colour = guide_legend(keywidth = 0.5, keyheight = 0.7),
+         size = guide_legend(keywidth = 0.5, keyheight = 0.7))
+
+ggsave("./output/graphics/reactome_pathway_association_volcano_plot_expsc.pdf", height = 4.8, width = 8.5)
+
+```
+
+## non-localised genes
+
+```{r}
+# ----- Perform statistics of gene set enrichment
+
+## non localised genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+non_localised <- gl_nd_expsc %>%
+  filter(rna_in_protrusion_expsc < 7) %>%
+  filter(`subperineurial glial cell` == TRUE | 
+           `perineurial glial sheath` == TRUE |
+           `adult brain perineurial glial cell` == TRUE |
+           `ensheathing glial cell` == TRUE)
+
+gl_disease_count <- unique(reactome_ens99$pathways_name_level1) %>%
+  set_names() %>%
+  future_map_dfr(~{
+    do_genes <- filter(reactome_ens99, pathways_name_level1 == .x) %>% pull(gene_id) %>% unique()
+    tibble(
+      count_in_genome = intersect(ens99$gene_id, do_genes) %>% length(),
+      count_in_gl = intersect(non_localised$dmel_gene_id, do_genes) %>% length()
+    )
+  }, .id = "name")
+
+total_background_count <- length(ens99$gene_id)
+total_target_count <- length(non_localised$dmel_gene_id)
+
+gl_disease_statistics <- gl_disease_count %>%
+  mutate(
+    pvalue = phyper(
+      count_in_gl - 1, 
+      count_in_genome, 
+      total_background_count - count_in_genome,
+      total_target_count,
+      lower.tail = FALSE
+      )
+    ) %>%
+  mutate(expected_count = total_target_count * (count_in_genome / total_background_count)) %>%
+  mutate(foldchange = count_in_gl / expected_count) %>%
+  mutate(log2foldchange = log2(foldchange)) %>%
+  mutate(adj_pvalue = p.adjust(pvalue, method = "bonferroni"))
+
+## Dataframe for list of genes 
+gl_disease_gene_list <- gl_disease_statistics %>%
+  dplyr::select(name, log2foldchange, adj_pvalue, count_in_genome,"count_in_localised_genes" = count_in_gl) %>%
+  filter(-log(adj_pvalue) > 10) %>%
+  arrange(adj_pvalue) %>%
+  mutate(gene_list = map_chr(name, ~ {
+    filter(reactome_ens99, pathways_name_level1 == .x) %>% 
+      filter(gene_id %in% non_localised$dmel_gene_id) %>%
+      pull(gene_name) %>% unique() %>% paste(collapse = ", ") %>% sort()
+  })) 
+
+#write_tsv(gl_disease_gene_list, "./output/analysis/gl_")
+
+# ----- Plot
+
+plottingdf <- gl_disease_statistics %>%
+  filter(log2foldchange != -Inf) %>%
+  mutate(put_label = if_else(-log10(adj_pvalue) > 10 | log2foldchange > 2, name, NA_character_)) %>%
+  mutate(put_label = if_else(-log10(adj_pvalue) < 2, NA_character_, put_label))
+  
+plottingdf$name2 <- reactome_ens99$pathways_name_level0[match(plottingdf$name, reactome_ens99$pathways_name_level1)]
+
+plottingdf <- plottingdf %>%
+  group_by(name2) %>%
+  mutate(level1_occurrence = sum(adj_pvalue < 0.01)) %>%
+  ungroup() %>%
+  mutate(name2 = if_else(level1_occurrence < 2, "other", name2))
+
+level1_order <- plottingdf %>%
+  arrange(desc(level1_occurrence)) %>%
+  pull(name2) %>%
+  unique()
+
+colours <- c(colorspace::qualitative_hcl(palette = "Dynamic", n = 11), "gray70")
+
+plottingdf %>%
+  mutate(name2 = fct_relevel(name2, level1_order)) %>%
+  ggplot(aes(x = log2foldchange, y = -log10(adj_pvalue), colour = name2, size = count_in_gl)) +
+  geom_point(alpha = 0.9, stroke = 0) +
+  geom_text_repel(aes(label = put_label), 
+                  max.overlaps = 100, hjust = 0,
+                  cex = 2, colour = "gray40", segment.size = 0.1) +
+  geom_hline(yintercept = -log10(0.01), linetype = "dashed", colour = "gray80", size = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "gray80", size = 0.3) +
+  labs(
+    x = "log2FoldChange",
+    y = "Adjusted p-value (-log10)",
+    colour = "Reactome group (n>2 significant)",
+    size = "Localised genes"
+  ) + 
+  scale_colour_manual(values = colours) +
+  coord_cartesian(xlim = c(0, 3.5), ylim = c(0, 65)) +
+  theme_bw() +
+  theme(
+    legend.key.width = unit(0.5,"cm"),
+    panel.grid = element_blank()
+  ) +
+  annotate(geom = "text", x = 0.2, y = -log(0.05) + 2, label = "p=0.01", cex = 2, alpha = 0.5) +
+  guides(colour = guide_legend(keywidth = 0.5, keyheight = 0.7),
+         size = guide_legend(keywidth = 0.5, keyheight = 0.7))
+
+ggsave("./output/graphics/reactome_pathway_association_volcano_plot_expsc_nonlocalised.pdf", height = 4.8, width = 8.5)
+```
+
+
+# Which of the screen 11 is localised in the dataset?
+
+```{r}
+## Fount in Titlow et al
+screen_goi <- c("Lac", "Pdi", "nrv2", "Flo2", "alpha-Cat", "Vha55", "Atpalpha", "Nrg", "Cip4", "Gs2", "shot")
+length(screen_goi)
+
+## get mouse genes
+gl_nd_expsc <- qread("./output/JCB_revision_1stRound/gl_nd_expsc.qs")
+
+screen_goi_conversion_table <- gl_nd_expsc %>%
+  filter(dmel_gene_name %in% screen_goi) %>%
+  dplyr::select(dmel_gene_id, dmel_gene_name, mmus_gene_ids) %>%
+  separate_longer_delim(cols = mmus_gene_ids, delim = ", ")
+
+## Kallisto tidy output
+protrusion_tidy <- readRDS("./data/RNAseq/summary_table/presence_in_protrusion/Protrusion-RNA_tidy.RDS")
+protrusion_tidy_expsc <- protrusion_tidy %>%
+  filter(!str_detect(library, "PCSc"))
+
+## Count how many genes are localised (out of 11) from each library
+screen_goi_library_df <- protrusion_tidy_expsc %>%
+  filter(gene_id %in% unique(screen_goi_conversion_table$mmus_gene_ids)) %>%
+  left_join(screen_goi_conversion_table, by = c("gene_id" = "mmus_gene_ids")) %>%
+  group_by(library, dmel_gene_id, dmel_gene_name) %>%
+  summarise(
+    localised_orthologue_count = sum(TPM > 10)
+  )
+
+screen_goi_summary_df <- screen_goi_library_df %>%
+  group_by(library) %>%
+  summarise(is_localised_count = sum(localised_orthologue_count > 0)) %>%
+  mutate(library = str_replace(library, "_protrusion.+", ""))
+  
+## Simple bar plot
+screen_goi_summary_df %>%
+  ggplot(aes(x = library, y = is_localised_count)) + 
+  geom_col(width = 0.6, fill = "goldenrod3", colour = "gray30") + 
+  geom_text(aes(label = is_localised_count, y = is_localised_count + 0.5), cex = 3) + 
+  labs(
+    x = "",
+    y = "# of genes found per mammalian libraries"
+  ) + 
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+ggsave("./output/graphics/screen_genes_identified_from_each_libraries.pdf", height = 3.5, width = 4)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+multi_bp@compareClusterResult %>% View()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
